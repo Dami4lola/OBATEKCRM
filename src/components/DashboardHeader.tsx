@@ -1,7 +1,18 @@
 import { Button } from '@/components/ui/button';
-import { Plus, Upload, TrendingUp, Users, DollarSign, Trophy, CheckSquare, AlertCircle } from 'lucide-react';
+import { Plus, Upload, TrendingUp, Users, DollarSign, Trophy, LogOut } from 'lucide-react';
 import { TasksSidebar } from './TasksSidebar';
 import { Task, Lead } from '@/types/lead';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 interface DashboardHeaderProps {
   stats: {
@@ -37,6 +48,16 @@ export function DashboardHeader({
   onCompleteTask,
   onDeleteTask,
 }: DashboardHeaderProps) {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  const userInitials = user?.email?.substring(0, 2).toUpperCase() || 'U';
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -75,6 +96,27 @@ export function DashboardHeader({
             <Plus className="w-4 h-4 mr-2" />
             Add Lead
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    {userInitials}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="font-normal">
+                <p className="text-sm font-medium">{user?.email}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

@@ -75,7 +75,7 @@ export function LeadDetailsSheet({
 
   if (!lead || !editedLead) return null;
 
-  const handleChange = (field: keyof Lead, value: any) => {
+  const handleChange = (field: keyof Lead, value: Lead[keyof Lead]) => {
     setEditedLead((prev) => prev ? { ...prev, [field]: value } : null);
     setHasChanges(true);
   };
