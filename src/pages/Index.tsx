@@ -6,18 +6,31 @@ import { PipelineColumn } from '@/components/PipelineColumn';
 import { LeadDetailsSheet } from '@/components/LeadDetailsSheet';
 import { ImportModal } from '@/components/ImportModal';
 import { AddLeadModal } from '@/components/AddLeadModal';
+import { SearchFilterBar } from '@/components/SearchFilterBar';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 const Index = () => {
   const {
     leads,
+    allLeads,
     stats,
+    filters,
+    setFilters,
     moveLeadToStage,
     addLead,
     addLeads,
     updateLead,
     deleteLead,
     getLeadsByStage,
+    // Activities
+    addActivity,
+    getActivitiesForLead,
+    // Tasks
+    addTask,
+    completeTask,
+    deleteTask,
+    getTasksForLead,
+    getAllPendingTasks,
   } = useLeads();
 
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -37,7 +50,21 @@ const Index = () => {
           stats={stats}
           onAddLead={() => setAddLeadOpen(true)}
           onImport={() => setImportOpen(true)}
+          allTasks={getAllPendingTasks()}
+          allLeads={allLeads}
+          onCompleteTask={completeTask}
+          onDeleteTask={deleteTask}
         />
+
+        {/* Search & Filters */}
+        <div className="mt-6">
+          <SearchFilterBar
+            filters={filters}
+            onFiltersChange={setFilters}
+            totalCount={stats.total}
+            filteredCount={stats.filtered}
+          />
+        </div>
 
         {/* Pipeline */}
         <div className="mt-6">
@@ -66,6 +93,12 @@ const Index = () => {
         onOpenChange={setDetailsOpen}
         onUpdate={updateLead}
         onDelete={deleteLead}
+        activities={selectedLead ? getActivitiesForLead(selectedLead.id) : []}
+        onAddActivity={addActivity}
+        tasks={selectedLead ? getTasksForLead(selectedLead.id) : []}
+        onAddTask={addTask}
+        onCompleteTask={completeTask}
+        onDeleteTask={deleteTask}
       />
 
       <ImportModal

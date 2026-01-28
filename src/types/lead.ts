@@ -28,3 +28,43 @@ export const STAGES: StageConfig[] = [
   { id: 'won', label: 'Won', color: 'stage-won' },
   { id: 'lost', label: 'Lost', color: 'stage-lost' },
 ];
+
+// Activity types
+export type ActivityType = 'call' | 'email' | 'note' | 'meeting' | 'task_completed';
+
+export interface Activity {
+  id: string;
+  leadId: string;
+  type: ActivityType;
+  title: string;
+  description?: string;
+  createdAt: Date;
+}
+
+// Task types
+export type TaskStatus = 'pending' | 'completed' | 'overdue';
+
+export interface Task {
+  id: string;
+  leadId: string;
+  title: string;
+  description?: string;
+  dueDate: Date;
+  status: TaskStatus;
+  createdAt: Date;
+  completedAt?: Date;
+}
+
+// Filter types
+export interface LeadFilters {
+  search: string;
+  stages: LeadStage[];
+  dateRange: {
+    from?: Date;
+    to?: Date;
+  };
+  valueRange: {
+    min?: number;
+    max?: number;
+  };
+}
