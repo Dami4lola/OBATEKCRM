@@ -63,7 +63,7 @@ export default function Signup() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground text-center">
-              Click the link in your email to verify your account and start using Leadly Flow.
+              Click the link in your email to verify your account and start using Obatek.
             </p>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
@@ -84,7 +84,7 @@ export default function Signup() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Create an account</CardTitle>
           <CardDescription className="text-center">
-            Get started with Leadly Flow
+            Get started with Obatek
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

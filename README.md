@@ -1,4 +1,4 @@
-# Leadly Flow
+# Obatek
 
 A modern CRM application for managing leads and sales pipeline.
 
