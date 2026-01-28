@@ -159,24 +159,31 @@ export function useLeads() {
   }, []);
 
   const addLead = useCallback(async (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const insertData: Record<string, unknown> = {
+      name: lead.name,
+      email: lead.email || '',
+      phone: lead.phone || null,
+      company: lead.company || null,
+      value: lead.value || null,
+      stage: lead.stage || 'new',
+      source: lead.source || null,
+      notes: lead.notes || null,
+    };
+
+    // Only add user_id if user exists
+    if (user?.id) {
+      insertData.user_id = user.id;
+    }
+
     const { data, error } = await supabase
       .from('leads')
-      .insert({
-        user_id: user?.id,
-        name: lead.name,
-        email: lead.email,
-        phone: lead.phone || null,
-        company: lead.company || null,
-        value: lead.value || null,
-        stage: lead.stage,
-        source: lead.source || null,
-        notes: lead.notes || null,
-      })
+      .insert(insertData)
       .select()
       .single();
 
     if (error) {
-      toast.error('Failed to add lead');
+      console.error('Failed to add lead:', error);
+      toast.error(`Failed to add lead: ${error.message}`);
       return null;
     } else {
       const newLead = transformLead(data);
@@ -187,17 +194,22 @@ export function useLeads() {
   }, [user]);
 
   const addLeads = useCallback(async (newLeads: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>[]) => {
-    const leadsToInsert = newLeads.map((lead) => ({
-      user_id: user?.id,
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone || null,
-      company: lead.company || null,
-      value: lead.value || null,
-      stage: lead.stage,
-      source: lead.source || null,
-      notes: lead.notes || null,
-    }));
+    const leadsToInsert = newLeads.map((lead) => {
+      const insertData: Record<string, unknown> = {
+        name: lead.name,
+        email: lead.email || '',
+        phone: lead.phone || null,
+        company: lead.company || null,
+        value: lead.value || null,
+        stage: lead.stage || 'new',
+        source: lead.source || null,
+        notes: lead.notes || null,
+      };
+      if (user?.id) {
+        insertData.user_id = user.id;
+      }
+      return insertData;
+    });
 
     const { data, error } = await supabase
       .from('leads')
@@ -205,7 +217,8 @@ export function useLeads() {
       .select();
 
     if (error) {
-      toast.error('Failed to import leads');
+      console.error('Failed to import leads:', error);
+      toast.error(`Failed to import leads: ${error.message}`);
       return [];
     } else {
       const insertedLeads = data.map(transformLead);
