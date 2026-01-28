@@ -1,11 +1,16 @@
 import { Button } from '@/components/ui/button';
-import { Plus, Upload, TrendingUp, Users, DollarSign, Trophy } from 'lucide-react';
+import { Plus, Upload, TrendingUp, Users, DollarSign, Trophy, CheckSquare, AlertCircle } from 'lucide-react';
+import { TasksSidebar } from './TasksSidebar';
+import { Task, Lead } from '@/types/lead';
 
 interface DashboardHeaderProps {
   stats: {
     total: number;
+    filtered: number;
     totalValue: number;
     wonValue: number;
+    pendingTasks: number;
+    overdueTasks: number;
     byStage: {
       new: number;
       contacted: number;
@@ -17,9 +22,21 @@ interface DashboardHeaderProps {
   };
   onAddLead: () => void;
   onImport: () => void;
+  allTasks: Task[];
+  allLeads: Lead[];
+  onCompleteTask: (taskId: string, leadId: string) => void;
+  onDeleteTask: (taskId: string) => void;
 }
 
-export function DashboardHeader({ stats, onAddLead, onImport }: DashboardHeaderProps) {
+export function DashboardHeader({
+  stats,
+  onAddLead,
+  onImport,
+  allTasks,
+  allLeads,
+  onCompleteTask,
+  onDeleteTask,
+}: DashboardHeaderProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -42,6 +59,14 @@ export function DashboardHeader({ stats, onAddLead, onImport }: DashboardHeaderP
           <p className="text-muted-foreground">Track and manage your sales leads</p>
         </div>
         <div className="flex items-center gap-3">
+          <TasksSidebar
+            tasks={allTasks}
+            leads={allLeads}
+            onComplete={onCompleteTask}
+            onDelete={onDeleteTask}
+            pendingCount={stats.pendingTasks}
+            overdueCount={stats.overdueTasks}
+          />
           <Button variant="outline" onClick={onImport}>
             <Upload className="w-4 h-4 mr-2" />
             Import
