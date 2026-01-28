@@ -31,19 +31,46 @@ export function ImportModal({ open, onOpenChange, onImport }: ImportModalProps) 
     setPreviewCount(0);
   };
 
+  const parseCSVLine = (line: string): string[] => {
+    const values: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        values.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    values.push(current.trim());
+
+    return values;
+  };
+
   const parseCSV = (text: string): Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>[] => {
-    const lines = text.trim().split('\n');
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('CSV file must have headers and at least one row');
 
-    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/['"]/g, ''));
     const leads: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map((v) => v.trim());
+      const values = parseCSVLine(lines[i]);
       const lead: Partial<Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>> = { stage: 'new' as LeadStage };
 
       headers.forEach((header, index) => {
-        const value = values[index] || '';
+        const value = (values[index] || '').replace(/^["']|["']$/g, '');
         if (header === 'name') lead.name = value;
         else if (header === 'email') lead.email = value;
         else if (header === 'phone') lead.phone = value;
