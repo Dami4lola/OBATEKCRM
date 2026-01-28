@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { Plus, Upload, TrendingUp, Users, DollarSign, Trophy, LogOut, Shield } from 'lucide-react';
+import { Plus, Upload, TrendingUp, Users, DollarSign, Trophy, LogOut } from 'lucide-react';
 import { TasksSidebar } from './TasksSidebar';
 import { Task, Lead } from '@/types/lead';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,7 +48,7 @@ export function DashboardHeader({
   onCompleteTask,
   onDeleteTask,
 }: DashboardHeaderProps) {
-  const { user, signOut, isSuperAdmin } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -111,12 +111,6 @@ export function DashboardHeader({
                 <p className="text-sm font-medium">{user?.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {isSuperAdmin && (
-                <DropdownMenuItem onClick={() => navigate('/admin')}>
-                  <Shield className="mr-2 h-4 w-4" />
-                  Admin Panel
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign out
