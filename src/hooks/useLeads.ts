@@ -1,135 +1,8 @@
-import { useState, useCallback, useMemo } from 'react';
-import { Lead, LeadStage, Activity, Task, LeadFilters, ActivityType, TaskStatus } from '@/types/lead';
-
-// Sample data for demonstration
-const initialLeads: Lead[] = [
-  {
-    id: '1',
-    name: 'Sarah Johnson',
-    email: 'sarah@techcorp.com',
-    phone: '+1 555-0101',
-    company: 'TechCorp Inc.',
-    value: 15000,
-    stage: 'new',
-    source: 'Website',
-    createdAt: new Date('2024-01-15'),
-    updatedAt: new Date('2024-01-15'),
-  },
-  {
-    id: '2',
-    name: 'Michael Chen',
-    email: 'mchen@innovate.io',
-    company: 'Innovate.io',
-    value: 25000,
-    stage: 'contacted',
-    source: 'Referral',
-    createdAt: new Date('2024-01-12'),
-    updatedAt: new Date('2024-01-14'),
-  },
-  {
-    id: '3',
-    name: 'Emily Davis',
-    email: 'emily.d@startup.co',
-    phone: '+1 555-0103',
-    company: 'Startup Co',
-    value: 8000,
-    stage: 'qualified',
-    source: 'LinkedIn',
-    createdAt: new Date('2024-01-10'),
-    updatedAt: new Date('2024-01-13'),
-  },
-  {
-    id: '4',
-    name: 'James Wilson',
-    email: 'jwilson@enterprise.com',
-    company: 'Enterprise LLC',
-    value: 50000,
-    stage: 'proposal',
-    source: 'Cold Email',
-    createdAt: new Date('2024-01-08'),
-    updatedAt: new Date('2024-01-12'),
-  },
-  {
-    id: '5',
-    name: 'Lisa Anderson',
-    email: 'lisa@globaltech.com',
-    phone: '+1 555-0105',
-    company: 'GlobalTech',
-    value: 35000,
-    stage: 'won',
-    source: 'Conference',
-    createdAt: new Date('2024-01-05'),
-    updatedAt: new Date('2024-01-11'),
-  },
-  {
-    id: '6',
-    name: 'Robert Taylor',
-    email: 'rtaylor@smallbiz.com',
-    company: 'SmallBiz Solutions',
-    value: 5000,
-    stage: 'new',
-    source: 'Website',
-    createdAt: new Date('2024-01-14'),
-    updatedAt: new Date('2024-01-14'),
-  },
-];
-
-const initialActivities: Activity[] = [
-  {
-    id: 'a1',
-    leadId: '1',
-    type: 'email',
-    title: 'Sent introduction email',
-    description: 'Introduced our services and requested a call',
-    createdAt: new Date('2024-01-15T10:30:00'),
-  },
-  {
-    id: 'a2',
-    leadId: '2',
-    type: 'call',
-    title: 'Discovery call completed',
-    description: 'Discussed their needs, interested in premium plan',
-    createdAt: new Date('2024-01-14T14:00:00'),
-  },
-  {
-    id: 'a3',
-    leadId: '3',
-    type: 'meeting',
-    title: 'Product demo scheduled',
-    description: 'Demo meeting for next week',
-    createdAt: new Date('2024-01-13T09:00:00'),
-  },
-];
-
-const initialTasks: Task[] = [
-  {
-    id: 't1',
-    leadId: '1',
-    title: 'Follow up on introduction email',
-    description: 'Check if they received the email and schedule a call',
-    dueDate: new Date('2024-01-17'),
-    status: 'pending',
-    createdAt: new Date('2024-01-15'),
-  },
-  {
-    id: 't2',
-    leadId: '2',
-    title: 'Send proposal document',
-    description: 'Prepare and send the custom proposal',
-    dueDate: new Date('2024-01-16'),
-    status: 'pending',
-    createdAt: new Date('2024-01-14'),
-  },
-  {
-    id: 't3',
-    leadId: '4',
-    title: 'Contract review meeting',
-    description: 'Review contract terms with legal',
-    dueDate: new Date('2024-01-15'),
-    status: 'overdue',
-    createdAt: new Date('2024-01-10'),
-  },
-];
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { Lead, LeadStage, Activity, Task, LeadFilters, TaskStatus } from '@/types/lead';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 const defaultFilters: LeadFilters = {
   search: '',
@@ -139,15 +12,101 @@ const defaultFilters: LeadFilters = {
 };
 
 export function useLeads() {
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
-  const [activities, setActivities] = useState<Activity[]>(initialActivities);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const { user } = useAuth();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [filters, setFilters] = useState<LeadFilters>(defaultFilters);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch all data on mount
+  useEffect(() => {
+    if (user) {
+      fetchLeads();
+      fetchActivities();
+      fetchTasks();
+    }
+  }, [user]);
+
+  const fetchLeads = async () => {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      toast.error('Failed to fetch leads');
+      console.error(error);
+    } else {
+      setLeads(data.map(transformLead));
+    }
+    setLoading(false);
+  };
+
+  const fetchActivities = async () => {
+    const { data, error } = await supabase
+      .from('activities')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error(error);
+    } else {
+      setActivities(data.map(transformActivity));
+    }
+  };
+
+  const fetchTasks = async () => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('due_date', { ascending: true });
+
+    if (error) {
+      console.error(error);
+    } else {
+      setTasks(data.map(transformTask));
+    }
+  };
+
+  // Transform database rows to app types
+  const transformLead = (row: Record<string, unknown>): Lead => ({
+    id: row.id as string,
+    name: row.name as string,
+    email: row.email as string,
+    phone: row.phone as string | undefined,
+    company: row.company as string | undefined,
+    value: row.value as number | undefined,
+    stage: row.stage as LeadStage,
+    source: row.source as string | undefined,
+    notes: row.notes as string | undefined,
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  });
+
+  const transformActivity = (row: Record<string, unknown>): Activity => ({
+    id: row.id as string,
+    leadId: row.lead_id as string,
+    type: row.type as Activity['type'],
+    title: row.title as string,
+    description: row.description as string | undefined,
+    createdAt: new Date(row.created_at as string),
+  });
+
+  const transformTask = (row: Record<string, unknown>): Task => ({
+    id: row.id as string,
+    leadId: row.lead_id as string,
+    title: row.title as string,
+    description: row.description as string | undefined,
+    dueDate: new Date(row.due_date as string),
+    status: row.status as TaskStatus,
+    createdAt: new Date(row.created_at as string),
+    completedAt: row.completed_at ? new Date(row.completed_at as string) : undefined,
+  });
 
   // Filter leads based on current filters
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         const matchesSearch =
@@ -158,12 +117,10 @@ export function useLeads() {
         if (!matchesSearch) return false;
       }
 
-      // Stage filter
       if (filters.stages.length > 0 && !filters.stages.includes(lead.stage)) {
         return false;
       }
 
-      // Date range filter
       if (filters.dateRange.from && new Date(lead.createdAt) < filters.dateRange.from) {
         return false;
       }
@@ -171,7 +128,6 @@ export function useLeads() {
         return false;
       }
 
-      // Value range filter
       if (filters.valueRange.min !== undefined && (lead.value || 0) < filters.valueRange.min) {
         return false;
       }
@@ -183,53 +139,126 @@ export function useLeads() {
     });
   }, [leads, filters]);
 
-  const moveLeadToStage = useCallback((leadId: string, newStage: LeadStage) => {
-    setLeads((prev) =>
-      prev.map((lead) =>
-        lead.id === leadId
-          ? { ...lead, stage: newStage, updatedAt: new Date() }
-          : lead
-      )
-    );
+  const moveLeadToStage = useCallback(async (leadId: string, newStage: LeadStage) => {
+    const { error } = await supabase
+      .from('leads')
+      .update({ stage: newStage })
+      .eq('id', leadId);
+
+    if (error) {
+      toast.error('Failed to update lead stage');
+    } else {
+      setLeads((prev) =>
+        prev.map((lead) =>
+          lead.id === leadId
+            ? { ...lead, stage: newStage, updatedAt: new Date() }
+            : lead
+        )
+      );
+    }
   }, []);
 
-  const addLead = useCallback((lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newLead: Lead = {
-      ...lead,
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setLeads((prev) => [newLead, ...prev]);
-    return newLead;
-  }, []);
+  const addLead = useCallback(async (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const { data, error } = await supabase
+      .from('leads')
+      .insert({
+        user_id: user?.id,
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone || null,
+        company: lead.company || null,
+        value: lead.value || null,
+        stage: lead.stage,
+        source: lead.source || null,
+        notes: lead.notes || null,
+      })
+      .select()
+      .single();
 
-  const addLeads = useCallback((newLeads: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>[]) => {
-    const leadsToAdd: Lead[] = newLeads.map((lead) => ({
-      ...lead,
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    if (error) {
+      toast.error('Failed to add lead');
+      return null;
+    } else {
+      const newLead = transformLead(data);
+      setLeads((prev) => [newLead, ...prev]);
+      toast.success('Lead added successfully');
+      return newLead;
+    }
+  }, [user]);
+
+  const addLeads = useCallback(async (newLeads: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+    const leadsToInsert = newLeads.map((lead) => ({
+      user_id: user?.id,
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone || null,
+      company: lead.company || null,
+      value: lead.value || null,
+      stage: lead.stage,
+      source: lead.source || null,
+      notes: lead.notes || null,
     }));
-    setLeads((prev) => [...leadsToAdd, ...prev]);
-    return leadsToAdd;
+
+    const { data, error } = await supabase
+      .from('leads')
+      .insert(leadsToInsert)
+      .select();
+
+    if (error) {
+      toast.error('Failed to import leads');
+      return [];
+    } else {
+      const insertedLeads = data.map(transformLead);
+      setLeads((prev) => [...insertedLeads, ...prev]);
+      toast.success(`${insertedLeads.length} leads imported successfully`);
+      return insertedLeads;
+    }
+  }, [user]);
+
+  const updateLead = useCallback(async (leadId: string, updates: Partial<Lead>) => {
+    const dbUpdates: Record<string, unknown> = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.email !== undefined) dbUpdates.email = updates.email;
+    if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+    if (updates.company !== undefined) dbUpdates.company = updates.company;
+    if (updates.value !== undefined) dbUpdates.value = updates.value;
+    if (updates.stage !== undefined) dbUpdates.stage = updates.stage;
+    if (updates.source !== undefined) dbUpdates.source = updates.source;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+    const { error } = await supabase
+      .from('leads')
+      .update(dbUpdates)
+      .eq('id', leadId);
+
+    if (error) {
+      toast.error('Failed to update lead');
+    } else {
+      setLeads((prev) =>
+        prev.map((lead) =>
+          lead.id === leadId
+            ? { ...lead, ...updates, updatedAt: new Date() }
+            : lead
+        )
+      );
+      toast.success('Lead updated successfully');
+    }
   }, []);
 
-  const updateLead = useCallback((leadId: string, updates: Partial<Lead>) => {
-    setLeads((prev) =>
-      prev.map((lead) =>
-        lead.id === leadId
-          ? { ...lead, ...updates, updatedAt: new Date() }
-          : lead
-      )
-    );
-  }, []);
+  const deleteLead = useCallback(async (leadId: string) => {
+    const { error } = await supabase
+      .from('leads')
+      .delete()
+      .eq('id', leadId);
 
-  const deleteLead = useCallback((leadId: string) => {
-    setLeads((prev) => prev.filter((lead) => lead.id !== leadId));
-    // Also delete related activities and tasks
-    setActivities((prev) => prev.filter((a) => a.leadId !== leadId));
-    setTasks((prev) => prev.filter((t) => t.leadId !== leadId));
+    if (error) {
+      toast.error('Failed to delete lead');
+    } else {
+      setLeads((prev) => prev.filter((lead) => lead.id !== leadId));
+      setActivities((prev) => prev.filter((a) => a.leadId !== leadId));
+      setTasks((prev) => prev.filter((t) => t.leadId !== leadId));
+      toast.success('Lead deleted successfully');
+    }
   }, []);
 
   const getLeadsByStage = useCallback(
@@ -238,15 +267,28 @@ export function useLeads() {
   );
 
   // Activity functions
-  const addActivity = useCallback((activity: Omit<Activity, 'id' | 'createdAt'>) => {
-    const newActivity: Activity = {
-      ...activity,
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-    };
-    setActivities((prev) => [newActivity, ...prev]);
-    return newActivity;
-  }, []);
+  const addActivity = useCallback(async (activity: Omit<Activity, 'id' | 'createdAt'>) => {
+    const { data, error } = await supabase
+      .from('activities')
+      .insert({
+        user_id: user?.id,
+        lead_id: activity.leadId,
+        type: activity.type,
+        title: activity.title,
+        description: activity.description || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error('Failed to add activity');
+      return null;
+    } else {
+      const newActivity = transformActivity(data);
+      setActivities((prev) => [newActivity, ...prev]);
+      return newActivity;
+    }
+  }, [user]);
 
   const getActivitiesForLead = useCallback(
     (leadId: string) =>
@@ -257,40 +299,79 @@ export function useLeads() {
   );
 
   // Task functions
-  const addTask = useCallback((task: Omit<Task, 'id' | 'createdAt' | 'status'>) => {
-    const newTask: Task = {
-      ...task,
-      id: crypto.randomUUID(),
-      status: 'pending',
-      createdAt: new Date(),
-    };
-    setTasks((prev) => [newTask, ...prev]);
-    return newTask;
+  const addTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt' | 'status'>) => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert({
+        user_id: user?.id,
+        lead_id: task.leadId,
+        title: task.title,
+        description: task.description || null,
+        due_date: task.dueDate.toISOString(),
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error('Failed to add task');
+      return null;
+    } else {
+      const newTask = transformTask(data);
+      setTasks((prev) => [newTask, ...prev]);
+      toast.success('Task added successfully');
+      return newTask;
+    }
+  }, [user]);
+
+  const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
+    const dbUpdates: Record<string, unknown> = {};
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.description !== undefined) dbUpdates.description = updates.description;
+    if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate.toISOString();
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt.toISOString();
+
+    const { error } = await supabase
+      .from('tasks')
+      .update(dbUpdates)
+      .eq('id', taskId);
+
+    if (error) {
+      toast.error('Failed to update task');
+    } else {
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? { ...task, ...updates } : task
+        )
+      );
+    }
   }, []);
 
-  const updateTask = useCallback((taskId: string, updates: Partial<Task>) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, ...updates } : task
-      )
-    );
-  }, []);
-
-  const completeTask = useCallback((taskId: string, leadId: string) => {
+  const completeTask = useCallback(async (taskId: string, leadId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (task) {
-      updateTask(taskId, { status: 'completed', completedAt: new Date() });
-      // Add activity for task completion
-      addActivity({
+      await updateTask(taskId, { status: 'completed', completedAt: new Date() });
+      await addActivity({
         leadId,
         type: 'task_completed',
         title: `Completed: ${task.title}`,
       });
+      toast.success('Task completed');
     }
   }, [tasks, updateTask, addActivity]);
 
-  const deleteTask = useCallback((taskId: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+  const deleteTask = useCallback(async (taskId: string) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId);
+
+    if (error) {
+      toast.error('Failed to delete task');
+    } else {
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    }
   }, []);
 
   const getTasksForLead = useCallback(
@@ -340,6 +421,7 @@ export function useLeads() {
     stats,
     filters,
     setFilters,
+    loading,
     moveLeadToStage,
     addLead,
     addLeads,
