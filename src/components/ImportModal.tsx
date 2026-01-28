@@ -86,7 +86,11 @@ export function ImportModal({ open, onOpenChange, onImport }: ImportModalProps) 
         }
       });
 
-      if (lead.name && lead.email) {
+      // Only need at least one identifier (name, email, company, or phone)
+      if (lead.name || lead.email || lead.company || lead.phone) {
+        // Default name/email if missing
+        if (!lead.name) lead.name = lead.email || lead.company || lead.phone || 'Unknown';
+        if (!lead.email) lead.email = '';
         leads.push(lead as Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>);
       }
     }
@@ -136,7 +140,7 @@ export function ImportModal({ open, onOpenChange, onImport }: ImportModalProps) 
       }
 
       if (leads.length === 0) {
-        throw new Error('No valid leads found in file. Each lead must have at least a name and email.');
+        throw new Error('No valid leads found in file. Each lead needs at least a name, email, company, or phone.');
       }
 
       setPreviewCount(leads.length);
