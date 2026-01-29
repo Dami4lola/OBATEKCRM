@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
@@ -45,14 +46,16 @@ export function LeadFormDialog({
       phone: '',
       value: null,
       notes: '',
-      stage_id: stageId || '',
+      stage_id: '',
     },
   })
 
-  // Update stage_id when it changes
-  if (stageId && form.getValues('stage_id') !== stageId) {
-    form.setValue('stage_id', stageId)
-  }
+  // Update stage_id when dialog opens with a new stage
+  useEffect(() => {
+    if (stageId && open) {
+      form.setValue('stage_id', stageId)
+    }
+  }, [stageId, open, form])
 
   const onSubmit = async (data: LeadFormData) => {
     try {
