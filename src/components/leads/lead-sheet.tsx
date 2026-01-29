@@ -279,8 +279,11 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                       <FormControl>
                         <Input
                           type="number"
-                          {...field}
                           value={field.value ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            field.onChange(val === '' ? null : Number(val))
+                          }}
                         />
                       </FormControl>
                       <FormMessage />

@@ -153,8 +153,11 @@ export function LeadFormDialog({
                     <Input
                       type="number"
                       placeholder="10000"
-                      {...field}
                       value={field.value ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        field.onChange(val === '' ? null : Number(val))
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
