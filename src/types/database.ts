@@ -205,6 +205,95 @@ export interface Database {
           }
         ]
       }
+      email_accounts: {
+        Row: {
+          id: string
+          user_id: string
+          provider: 'outlook'
+          email_address: string
+          access_token: string
+          refresh_token: string
+          token_expires_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: 'outlook'
+          email_address: string
+          access_token: string
+          refresh_token: string
+          token_expires_at: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: 'outlook'
+          email_address?: string
+          access_token?: string
+          refresh_token?: string
+          token_expires_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_accounts_user_id_fkey'
+            columns: ['user_id']
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      email_logs: {
+        Row: {
+          id: string
+          email_account_id: string
+          lead_id: string
+          subject: string
+          body: string
+          sent_at: string
+          status: 'sent' | 'failed' | 'bounced'
+          error_message: string | null
+        }
+        Insert: {
+          id?: string
+          email_account_id: string
+          lead_id: string
+          subject: string
+          body: string
+          sent_at?: string
+          status?: 'sent' | 'failed' | 'bounced'
+          error_message?: string | null
+        }
+        Update: {
+          id?: string
+          email_account_id?: string
+          lead_id?: string
+          subject?: string
+          body?: string
+          sent_at?: string
+          status?: 'sent' | 'failed' | 'bounced'
+          error_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'email_logs_email_account_id_fkey'
+            columns: ['email_account_id']
+            referencedRelation: 'email_accounts'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'email_logs_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -240,3 +329,9 @@ export type LeadUpdate = Database['public']['Tables']['leads']['Update']
 export type ActivityInsert = Database['public']['Tables']['activities']['Insert']
 export type TaskInsert = Database['public']['Tables']['tasks']['Insert']
 export type TaskUpdate = Database['public']['Tables']['tasks']['Update']
+
+export type EmailAccount = Database['public']['Tables']['email_accounts']['Row']
+export type EmailAccountInsert = Database['public']['Tables']['email_accounts']['Insert']
+export type EmailAccountUpdate = Database['public']['Tables']['email_accounts']['Update']
+export type EmailLog = Database['public']['Tables']['email_logs']['Row']
+export type EmailLogInsert = Database['public']['Tables']['email_logs']['Insert']

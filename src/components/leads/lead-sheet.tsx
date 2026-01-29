@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import { Trash2, Mail, Phone, Building2, DollarSign } from 'lucide-react'
+import { Trash2, Mail, Phone, Building2, DollarSign, Send } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -38,6 +38,7 @@ import { Badge } from '@/components/ui/badge'
 import { useUpdateLead, useDeleteLead } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
 import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
+import { ComposeEmailDialog } from '@/components/email/compose-email-dialog'
 import type { Lead } from '@/types/database'
 
 interface LeadSheetProps {
@@ -48,6 +49,7 @@ interface LeadSheetProps {
 
 export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isEmailOpen, setIsEmailOpen] = useState(false)
   const updateLead = useUpdateLead()
   const deleteLead = useDeleteLead()
   const { data: stages = [] } = useStages()
@@ -159,14 +161,25 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   </div>
                 )}
                 {lead.email && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <a
-                      href={`mailto:${lead.email}`}
-                      className="text-primary hover:underline"
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <a
+                        href={`mailto:${lead.email}`}
+                        className="text-primary hover:underline"
+                      >
+                        {lead.email}
+                      </a>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsEmailOpen(true)}
+                      className="h-7 px-2"
                     >
-                      {lead.email}
-                    </a>
+                      <Send className="h-3 w-3 mr-1" />
+                      Send
+                    </Button>
                   </div>
                 )}
                 {lead.phone && (
@@ -330,6 +343,12 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
             </Form>
           )}
         </div>
+
+        <ComposeEmailDialog
+          open={isEmailOpen}
+          onOpenChange={setIsEmailOpen}
+          lead={lead}
+        />
       </SheetContent>
     </Sheet>
   )
