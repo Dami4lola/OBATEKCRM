@@ -11,7 +11,7 @@ import {
   type ColumnFiltersState,
   flexRender,
 } from '@tanstack/react-table'
-import { Search, Plus, X } from 'lucide-react'
+import { Search, Plus, X, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -39,6 +39,7 @@ import { useStages } from '@/lib/queries/stages'
 import { createColumns } from './columns'
 import { LeadSheet } from '@/components/leads/lead-sheet'
 import { LeadFormDialog } from '@/components/leads/lead-form-dialog'
+import { ImportLeadsDialog } from '@/components/leads/import-leads-dialog'
 import type { Lead } from '@/types/database'
 
 export function ContactsTable() {
@@ -50,6 +51,7 @@ export function ContactsTable() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Lead | null>(null)
 
   const { data: leads = [], isLoading: leadsLoading } = useLeads()
@@ -142,10 +144,16 @@ export function ContactsTable() {
           </div>
         </div>
 
-        <Button onClick={() => setIsAddDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Lead
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import
+          </Button>
+          <Button onClick={() => setIsAddDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Lead
+          </Button>
+        </div>
       </div>
 
       {/* Stage filters */}
@@ -295,6 +303,12 @@ export function ContactsTable() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import Leads Dialog */}
+      <ImportLeadsDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+      />
     </div>
   )
 }

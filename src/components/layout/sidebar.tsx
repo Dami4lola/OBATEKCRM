@@ -16,6 +16,11 @@ const navItems = [
     href: '/contacts',
     icon: Users,
   },
+  {
+    title: 'Settings',
+    href: '/settings',
+    icon: Settings,
+  },
 ]
 
 export function Sidebar() {

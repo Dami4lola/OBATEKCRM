@@ -145,3 +145,47 @@ export function useMoveLead() {
     },
   })
 }
+
+// Bulk create leads for import functionality
+export function useBulkCreateLeads() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      stageId,
+      leads,
+    }: {
+      stageId: string
+      leads: Omit<LeadInsert, 'stage_id' | 'position_index'>[]
+    }): Promise<Lead[]> => {
+      // Get the max position_index for the stage
+      const { data: existingLeads } = await supabase
+        .from('leads')
+        .select('position_index')
+        .eq('stage_id', stageId)
+        .order('position_index', { ascending: false })
+        .limit(1)
+
+      let maxPosition = existingLeads?.[0]?.position_index ?? -1
+
+      // Assign incremental position_index to each lead
+      const leadsWithPosition = leads.map((lead) => ({
+        ...lead,
+        stage_id: stageId,
+        position_index: ++maxPosition,
+      }))
+
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(leadsWithPosition)
+        .select()
+
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+    },
+  })
+}
