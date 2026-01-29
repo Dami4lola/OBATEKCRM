@@ -28,6 +28,7 @@ export interface Database {
           full_name?: string | null
           created_at?: string
         }
+        Relationships: []
       }
       pipelines: {
         Row: {
@@ -45,6 +46,7 @@ export interface Database {
           name?: string
           created_at?: string
         }
+        Relationships: []
       }
       stages: {
         Row: {
@@ -71,6 +73,14 @@ export interface Database {
           order_index?: number
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'stages_pipeline_id_fkey'
+            columns: ['pipeline_id']
+            referencedRelation: 'pipelines'
+            referencedColumns: ['id']
+          }
+        ]
       }
       leads: {
         Row: {
@@ -112,6 +122,14 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'leads_stage_id_fkey'
+            columns: ['stage_id']
+            referencedRelation: 'stages'
+            referencedColumns: ['id']
+          }
+        ]
       }
       activities: {
         Row: {
@@ -138,6 +156,14 @@ export interface Database {
           description?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'activities_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          }
+        ]
       }
       tasks: {
         Row: {
@@ -170,7 +196,34 @@ export interface Database {
           completed_at?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'tasks_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          }
+        ]
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      move_lead: {
+        Args: {
+          p_lead_id: string
+          p_new_stage_id: string
+          p_new_position: number
+        }
+        Returns: undefined
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }

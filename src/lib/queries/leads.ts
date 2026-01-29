@@ -54,14 +54,13 @@ export function useCreateLead() {
         .limit(1)
 
       const maxPosition = existingLeads?.[0]?.position_index ?? -1
-      const newLead = {
-        ...lead,
-        position_index: maxPosition + 1,
-      }
 
       const { data, error } = await supabase
         .from('leads')
-        .insert(newLead)
+        .insert({
+          ...lead,
+          position_index: maxPosition + 1,
+        })
         .select()
         .single()
 
