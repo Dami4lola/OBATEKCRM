@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Mail, Lock, User } from 'lucide-react'
+import { Loader2, Mail, Lock, User, AlertTriangle } from 'lucide-react'
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('')
@@ -16,13 +16,41 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [configError, setConfigError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+
+  const supabase = useMemo(() => {
+    try {
+      return createClient()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to initialize Supabase client'
+      setConfigError(message)
+      return null
+    }
+  }, [])
+
+  // Check for missing env vars on mount
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!url || !key) {
+      const missing = []
+      if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
+      if (!key) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+      setConfigError(`Missing environment variables: ${missing.join(', ')}`)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (!supabase) {
+      setError('Cannot connect to authentication service. Check configuration.')
+      return
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -47,7 +75,12 @@ export default function SignupPage() {
     })
 
     if (error) {
-      setError(error.message)
+      // Check for API key related errors
+      if (error.message.includes('API key') || error.message.includes('apikey')) {
+        setError('Configuration error: Invalid or missing API key. Please check your Supabase settings.')
+      } else {
+        setError(error.message)
+      }
       setLoading(false)
     } else {
       // Auto sign in after signup
@@ -77,6 +110,15 @@ export default function SignupPage() {
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
+          {configError && (
+            <div className="p-3 text-sm text-amber-700 bg-amber-50 dark:bg-amber-950 dark:text-amber-300 rounded-md flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">Configuration Error</p>
+                <p className="mt-1">{configError}</p>
+              </div>
+            </div>
+          )}
           {error && (
             <div className="p-3 text-sm text-red-500 bg-red-50 dark:bg-red-950 rounded-md">
               {error}
