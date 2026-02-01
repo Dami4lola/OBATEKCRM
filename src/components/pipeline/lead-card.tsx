@@ -51,6 +51,7 @@ export function LeadCard({ lead, index, onClick }: LeadCardProps) {
                 <div className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
                   <DollarSign className="h-3 w-3" />
                   <span>{Number(lead.value).toLocaleString()}</span>
+                  <span className="truncate">{lead.payment_terms}</span>
                 </div>
               )}
             </CardContent>

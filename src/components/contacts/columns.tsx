@@ -78,7 +78,10 @@ export const createColumns = ({
     ),
     cell: ({ row }) => {
       const value = row.getValue('value') as number | null
-      return value ? `$${value.toLocaleString()}` : '-'
+      const terms = row.original.payment_terms
+      if (!value) return '-'
+      const suffix = terms === 'monthly' ? '/mo' : terms === 'hourly' ? '/hr' : ''
+      return `$${value.toLocaleString()}${suffix}`
     },
   },
   {

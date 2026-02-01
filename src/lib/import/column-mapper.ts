@@ -6,6 +6,7 @@ const FIELD_ALIASES: Record<keyof LeadImportFields, string[]> = {
   email: ['email', 'email_address', 'mail', 'e-mail', 'emailaddress'],
   phone: ['phone', 'phone_number', 'tel', 'telephone', 'mobile', 'number', 'phonenumber', 'cell'],
   value: ['value', 'deal_value', 'amount', 'worth', 'price', 'dealvalue'],
+  payment_terms: ['payment_terms', 'payment', 'terms', 'billing', 'frequency', 'paymentterms'],
   notes: ['notes', 'note', 'description', 'comments', 'comment', 'remarks'],
 }
 
@@ -38,6 +39,19 @@ export function applyMapping(
         case 'value': {
           const numValue = typeof value === 'number' ? value : parseFloat(String(value))
           result.value = isNaN(numValue) ? null : numValue
+          break
+        }
+        case 'payment_terms': {
+          const terms = String(value).toLowerCase().trim()
+          if (terms === 'one_time' || terms === 'onetime' || terms === 'one time') {
+            result.payment_terms = 'one_time'
+          } else if (terms === 'monthly' || terms === 'month' || terms === 'mo') {
+            result.payment_terms = 'monthly'
+          } else if (terms === 'hourly' || terms === 'hour' || terms === 'hr') {
+            result.payment_terms = 'hourly'
+          } else {
+            result.payment_terms = null
+          }
           break
         }
         case 'contact_name':
