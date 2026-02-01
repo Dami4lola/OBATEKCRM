@@ -6,6 +6,7 @@ export const importRowSchema = z.object({
   email: z.union([z.string().email('Invalid email'), z.literal(''), z.null()]).optional(),
   phone: z.string().nullable().optional(),
   value: z.number().min(0).nullable().optional(),
+  payment_terms: z.enum(['one_time', 'monthly', 'hourly']).nullable().optional(),
   notes: z.string().nullable().optional(),
 })
 

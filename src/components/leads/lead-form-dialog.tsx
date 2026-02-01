@@ -21,6 +21,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCreateLead } from '@/lib/queries/leads'
 import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
 
@@ -45,6 +52,7 @@ export function LeadFormDialog({
       email: '',
       phone: '',
       value: null,
+      payment_terms: null,
       notes: '',
       stage_id: '',
     },
@@ -62,6 +70,7 @@ export function LeadFormDialog({
       await createLead.mutateAsync({
         ...data,
         value: data.value ?? null,
+        payment_terms: data.payment_terms ?? null,
         email: data.email || null,
         phone: data.phone || null,
         company_name: data.company_name || null,
@@ -146,27 +155,55 @@ export function LeadFormDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="value"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Deal Value</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      placeholder="10000"
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="value"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Deal Value</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="10000"
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          field.onChange(val === '' ? null : Number(val))
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="payment_terms"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Terms</FormLabel>
+                    <Select
                       value={field.value ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        field.onChange(val === '' ? null : Number(val))
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                      onValueChange={(val) => field.onChange(val || null)}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select terms" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="one_time">One Time</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="hourly">Hourly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}

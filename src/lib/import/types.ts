@@ -24,6 +24,7 @@ export interface LeadImportFields {
   email: string | null
   phone: string | null
   value: number | null
+  payment_terms: 'one_time' | 'monthly' | 'hourly' | null
   notes: string | null
 }
 

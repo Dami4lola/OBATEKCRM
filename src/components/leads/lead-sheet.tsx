@@ -35,6 +35,13 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useUpdateLead, useDeleteLead } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
 import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
@@ -63,6 +70,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           email: lead.email || '',
           phone: lead.phone || '',
           value: lead.value ? Number(lead.value) : null,
+          payment_terms: lead.payment_terms ?? null,
           notes: lead.notes || '',
           stage_id: lead.stage_id,
         }
@@ -80,6 +88,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
         updates: {
           ...data,
           value: data.value ?? null,
+          payment_terms: data.payment_terms ?? null,
           email: data.email || null,
           phone: data.phone || null,
           company_name: data.company_name || null,
@@ -196,7 +205,14 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                 {lead.value && (
                   <div className="flex items-center gap-2 text-sm font-medium text-green-600">
                     <DollarSign className="h-4 w-4" />
-                    <span>${Number(lead.value).toLocaleString()}</span>
+                    <span>
+                      ${Number(lead.value).toLocaleString()}
+                      {lead.payment_terms && (
+                        <span className="text-muted-foreground font-normal ml-1">
+                          / {lead.payment_terms === 'one_time' ? 'one time' : lead.payment_terms === 'monthly' ? 'mo' : 'hr'}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 )}
               </div>
@@ -283,26 +299,54 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Deal Value</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Deal Value</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              field.onChange(val === '' ? null : Number(val))
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="payment_terms"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Terms</FormLabel>
+                        <Select
                           value={field.value ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            field.onChange(val === '' ? null : Number(val))
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          onValueChange={(val) => field.onChange(val || null)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select terms" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="one_time">One Time</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="hourly">Hourly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}

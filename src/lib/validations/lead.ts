@@ -6,6 +6,7 @@ export const leadSchema = z.object({
   email: z.union([z.string().email('Invalid email'), z.literal('')]).optional(),
   phone: z.string().optional(),
   value: z.number().min(0).nullable().optional(),
+  payment_terms: z.enum(['one_time', 'monthly', 'hourly']).nullable().optional(),
   notes: z.string().optional(),
   stage_id: z.string().uuid('Invalid stage'),
 })
