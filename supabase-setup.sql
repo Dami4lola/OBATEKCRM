@@ -18,6 +18,7 @@ DROP FUNCTION IF EXISTS update_updated_at_column();
 DROP FUNCTION IF EXISTS move_lead(UUID, UUID, INT);
 
 -- Drop tables (order matters due to foreign keys)
+DROP TABLE IF EXISTS meetings CASCADE;
 DROP TABLE IF EXISTS tasks CASCADE;
 DROP TABLE IF EXISTS activities CASCADE;
 DROP TABLE IF EXISTS leads CASCADE;
@@ -91,6 +92,21 @@ CREATE TABLE tasks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Meetings table (logged from a lead on the pipeline)
+CREATE TABLE meetings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  meeting_date TIMESTAMPTZ NOT NULL,
+  title TEXT NOT NULL,
+  attendee_name TEXT NOT NULL,
+  attendee_role TEXT NOT NULL CHECK (attendee_role IN ('employee', 'decision_maker')),
+  field_of_work TEXT,
+  notes TEXT,
+  outcome TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================
 -- STEP 3: CREATE INDEXES
 -- ============================================
@@ -99,6 +115,8 @@ CREATE INDEX idx_leads_stage_position ON leads(stage_id, position_index);
 CREATE INDEX idx_stages_pipeline_order ON stages(pipeline_id, order_index);
 CREATE INDEX idx_activities_lead ON activities(lead_id);
 CREATE INDEX idx_tasks_lead ON tasks(lead_id);
+CREATE INDEX idx_meetings_lead ON meetings(lead_id);
+CREATE INDEX idx_meetings_date ON meetings(meeting_date DESC);
 
 -- ============================================
 -- STEP 4: CREATE FUNCTIONS & TRIGGERS
@@ -133,6 +151,11 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_leads_updated_at
   BEFORE UPDATE ON leads
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_meetings_updated_at
+  BEFORE UPDATE ON meetings
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
@@ -203,6 +226,7 @@ ALTER TABLE stages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- STEP 7: CREATE RLS POLICIES
@@ -262,6 +286,13 @@ CREATE POLICY "Authenticated users can manage activities"
 -- Tasks
 CREATE POLICY "Authenticated users can manage tasks"
   ON tasks FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- Meetings
+CREATE POLICY "Authenticated users can manage meetings"
+  ON meetings FOR ALL
   TO authenticated
   USING (true)
   WITH CHECK (true);
