@@ -168,6 +168,55 @@ export interface Database {
           }
         ]
       }
+      meetings: {
+        Row: {
+          id: string
+          lead_id: string
+          meeting_date: string
+          title: string
+          attendee_name: string
+          attendee_role: 'employee' | 'decision_maker'
+          field_of_work: string | null
+          notes: string | null
+          outcome: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id: string
+          meeting_date: string
+          title: string
+          attendee_name: string
+          attendee_role: 'employee' | 'decision_maker'
+          field_of_work?: string | null
+          notes?: string | null
+          outcome?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string
+          meeting_date?: string
+          title?: string
+          attendee_name?: string
+          attendee_role?: 'employee' | 'decision_maker'
+          field_of_work?: string | null
+          notes?: string | null
+          outcome?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'meetings_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       tasks: {
         Row: {
           id: string
@@ -332,6 +381,14 @@ export type LeadUpdate = Database['public']['Tables']['leads']['Update']
 export type ActivityInsert = Database['public']['Tables']['activities']['Insert']
 export type TaskInsert = Database['public']['Tables']['tasks']['Insert']
 export type TaskUpdate = Database['public']['Tables']['tasks']['Update']
+
+export type Meeting = Database['public']['Tables']['meetings']['Row']
+export type MeetingInsert = Database['public']['Tables']['meetings']['Insert']
+export type MeetingUpdate = Database['public']['Tables']['meetings']['Update']
+export type MeetingRole = Meeting['attendee_role']
+export type MeetingWithLead = Meeting & {
+  leads: Pick<Lead, 'id' | 'contact_name' | 'company_name' | 'stage_id'> | null
+}
 
 export type EmailAccount = Database['public']['Tables']['email_accounts']['Row']
 export type EmailAccountInsert = Database['public']['Tables']['email_accounts']['Insert']

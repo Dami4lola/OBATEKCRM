@@ -97,6 +97,8 @@ export function useUpdateLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
+      // Meeting tiles show the lead's company, and meetings cascade on delete
+      queryClient.invalidateQueries({ queryKey: ['meetings'] })
     },
   })
 }
@@ -112,6 +114,8 @@ export function useDeleteLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
+      // Meeting tiles show the lead's company, and meetings cascade on delete
+      queryClient.invalidateQueries({ queryKey: ['meetings'] })
     },
   })
 }

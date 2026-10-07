@@ -5,7 +5,15 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import { Trash2, Mail, Phone, Building2, DollarSign, Send } from 'lucide-react'
+import {
+  Trash2,
+  Mail,
+  Phone,
+  Building2,
+  DollarSign,
+  Send,
+  CalendarPlus,
+} from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -46,7 +54,10 @@ import { useUpdateLead, useDeleteLead } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
 import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
 import { ComposeEmailDialog } from '@/components/email/compose-email-dialog'
-import type { Lead } from '@/types/database'
+import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
+import { useLeadMeetings } from '@/lib/queries/meetings'
+import { getRoleLabel } from '@/lib/validations/meeting'
+import type { Lead, Meeting } from '@/types/database'
 
 interface LeadSheetProps {
   lead: Lead | null
@@ -57,9 +68,12 @@ interface LeadSheetProps {
 export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isEmailOpen, setIsEmailOpen] = useState(false)
+  const [isMeetingOpen, setIsMeetingOpen] = useState(false)
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
   const updateLead = useUpdateLead()
   const deleteLead = useDeleteLead()
   const { data: stages = [] } = useStages()
+  const { data: meetings = [] } = useLeadMeetings(lead?.id)
 
   const form = useForm<LeadFormData>({
     resolver: zodResolver(leadSchema),
@@ -227,6 +241,65 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                 </div>
               )}
 
+              {/* Meetings */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium">
+                    Meetings{meetings.length > 0 && ` (${meetings.length})`}
+                  </h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingMeeting(null)
+                      setIsMeetingOpen(true)
+                    }}
+                    className="h-7 px-2"
+                  >
+                    <CalendarPlus className="h-3 w-3 mr-1" />
+                    Log meeting
+                  </Button>
+                </div>
+                {meetings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No meetings logged yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {meetings.map((meeting) => (
+                      <button
+                        key={meeting.id}
+                        type="button"
+                        onClick={() => {
+                          setEditingMeeting(meeting)
+                          setIsMeetingOpen(true)
+                        }}
+                        className="w-full rounded-md border p-2 text-left transition-colors hover:bg-muted/50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium">
+                            {meeting.title}
+                          </span>
+                          <Badge
+                            variant={
+                              meeting.attendee_role === 'decision_maker'
+                                ? 'default'
+                                : 'secondary'
+                            }
+                          >
+                            {getRoleLabel(meeting.attendee_role)}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(meeting.meeting_date), 'PPp')} ·{' '}
+                          {meeting.attendee_name}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Timestamps */}
               <div className="space-y-1 text-xs text-muted-foreground border-t pt-4">
                 <p>Created: {format(new Date(lead.created_at), 'PPp')}</p>
@@ -392,6 +465,13 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           open={isEmailOpen}
           onOpenChange={setIsEmailOpen}
           lead={lead}
+        />
+
+        <MeetingFormDialog
+          open={isMeetingOpen}
+          onOpenChange={setIsMeetingOpen}
+          lead={lead}
+          meeting={editingMeeting}
         />
       </SheetContent>
     </Sheet>
