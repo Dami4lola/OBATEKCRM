@@ -27,7 +27,9 @@ import { autoMapColumns, applyMapping } from '@/lib/import/column-mapper'
 import { validateImportRow } from '@/lib/validations/import'
 import { useBulkCreateLeads } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
-import type { ParseResult, ColumnMapping, ParsedRow } from '@/lib/import/types'
+import { EMAIL_SOURCES } from '@/lib/validations/lead'
+import type { ParseResult, ColumnMapping, ParsedRow, LeadImportFields } from '@/lib/import/types'
+import type { EmailSource } from '@/types/database'
 
 type Step = 'upload' | 'map' | 'preview'
 
@@ -42,6 +44,7 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
   const [mappings, setMappings] = useState<ColumnMapping[]>([])
   const [validatedRows, setValidatedRows] = useState<ParsedRow[]>([])
   const [selectedStageId, setSelectedStageId] = useState<string>('')
+  const [emailSource, setEmailSource] = useState<EmailSource | ''>('')
   const [isLoading, setIsLoading] = useState(false)
 
   const { data: stages = [] } = useStages()
@@ -99,14 +102,27 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
 
     const validLeads = validatedRows
       .filter(row => row.isValid)
-      .map(row => ({
-        contact_name: String(row.data.contact_name),
-        company_name: row.data.company_name ? String(row.data.company_name) : null,
-        email: row.data.email ? String(row.data.email) : null,
-        phone: row.data.phone ? String(row.data.phone) : null,
-        value: row.data.value ? Number(row.data.value) : null,
-        notes: row.data.notes ? String(row.data.notes) : null,
-      }))
+      .map(row => {
+        const data = row.data as Partial<LeadImportFields>
+        return {
+          contact_name: String(data.contact_name),
+          company_name: data.company_name ?? null,
+          email: data.email ?? null,
+          phone: data.phone ?? null,
+          value: data.value ?? null,
+          payment_terms: data.payment_terms ?? null,
+          notes: data.notes ?? null,
+          job_title: data.job_title ?? null,
+          website: data.website ?? null,
+          city: data.city ?? null,
+          region: data.region ?? null,
+          country: data.country ?? null,
+          vertical: data.vertical ?? null,
+          staff_size: data.staff_size ?? null,
+          linkedin_url: data.linkedin_url ?? null,
+          email_source: data.email ? emailSource || null : null,
+        }
+      })
 
     if (validLeads.length === 0) {
       toast.error('No valid leads to import')
@@ -121,7 +137,7 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
       toast.error('Failed to import leads')
       console.error('Import error:', error)
     }
-  }, [selectedStageId, validatedRows, bulkCreate])
+  }, [selectedStageId, validatedRows, emailSource, bulkCreate])
 
   const handleClose = useCallback(() => {
     setStep('upload')
@@ -129,6 +145,7 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
     setMappings([])
     setValidatedRows([])
     setSelectedStageId('')
+    setEmailSource('')
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -186,6 +203,27 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Where did these emails come from?</Label>
+                <Select
+                  value={emailSource}
+                  onValueChange={(val) => setEmailSource(val as EmailSource)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Email source (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EMAIL_SOURCES.map(source => (
+                      <SelectItem key={source.value} value={source.value}>
+                        {source.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Outreach only auto-emails Canadian leads whose email came from their own website (CASL).
+                </p>
               </div>
               <ImportPreviewTable rows={validatedRows} mappings={mappings} />
             </div>

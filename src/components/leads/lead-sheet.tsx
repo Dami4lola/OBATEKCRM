@@ -13,6 +13,11 @@ import {
   DollarSign,
   Send,
   CalendarPlus,
+  Briefcase,
+  Globe,
+  MapPin,
+  Link2,
+  Users,
 } from 'lucide-react'
 import {
   Sheet,
@@ -52,7 +57,14 @@ import {
 } from '@/components/ui/select'
 import { useUpdateLead, useDeleteLead } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
-import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
+import {
+  leadSchema,
+  leadFormToRow,
+  EMAIL_SOURCES,
+  type LeadFormData,
+} from '@/lib/validations/lead'
+import { LeadOutreachFields } from './lead-outreach-fields'
+import { externalUrl } from '@/lib/utils'
 import { ComposeEmailDialog } from '@/components/email/compose-email-dialog'
 import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
 import { useLeadMeetings } from '@/lib/queries/meetings'
@@ -87,11 +99,28 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           payment_terms: lead.payment_terms ?? null,
           notes: lead.notes || '',
           stage_id: lead.stage_id,
+          job_title: lead.job_title || '',
+          website: lead.website || '',
+          city: lead.city || '',
+          region: lead.region || '',
+          country: lead.country || '',
+          vertical: lead.vertical || '',
+          staff_size: lead.staff_size ?? null,
+          linkedin_url: lead.linkedin_url || '',
+          email_source: lead.email_source ?? null,
         }
       : undefined,
   })
 
   const currentStage = stages.find((s) => s.id === lead?.stage_id)
+  const leadLocation = [lead?.city, lead?.region, lead?.country]
+    .filter(Boolean)
+    .join(', ')
+  const websiteUrl = externalUrl(lead?.website)
+  const linkedinUrl = externalUrl(lead?.linkedin_url)
+  const emailSourceLabel = EMAIL_SOURCES.find(
+    (s) => s.value === lead?.email_source
+  )?.label
 
   const onSubmit = async (data: LeadFormData) => {
     if (!lead) return
@@ -99,15 +128,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
     try {
       await updateLead.mutateAsync({
         id: lead.id,
-        updates: {
-          ...data,
-          value: data.value ?? null,
-          payment_terms: data.payment_terms ?? null,
-          email: data.email || null,
-          phone: data.phone || null,
-          company_name: data.company_name || null,
-          notes: data.notes || null,
-        },
+        updates: leadFormToRow(data),
       })
       toast.success('Lead updated successfully')
       setIsEditing(false)
@@ -181,6 +202,15 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   <div className="flex items-center gap-2 text-sm">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span>{lead.company_name}</span>
+                    {lead.vertical && (
+                      <Badge variant="secondary">{lead.vertical}</Badge>
+                    )}
+                  </div>
+                )}
+                {lead.job_title && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <span>{lead.job_title}</span>
                   </div>
                 )}
                 {lead.email && (
@@ -215,6 +245,49 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                       {lead.phone}
                     </a>
                   </div>
+                )}
+                {websiteUrl && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {lead.website}
+                    </a>
+                  </div>
+                )}
+                {linkedinUrl && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Link2 className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={linkedinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      LinkedIn profile
+                    </a>
+                  </div>
+                )}
+                {leadLocation && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span>{leadLocation}</span>
+                  </div>
+                )}
+                {lead.staff_size && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span>{lead.staff_size} staff</span>
+                  </div>
+                )}
+                {emailSourceLabel && (
+                  <p className="text-xs text-muted-foreground">
+                    Email source: {emailSourceLabel}
+                  </p>
                 )}
                 {lead.value && (
                   <div className="flex items-center gap-2 text-sm font-medium text-green-600">
@@ -438,6 +511,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                     </FormItem>
                   )}
                 />
+
+                <LeadOutreachFields control={form.control} />
 
                 <div className="flex gap-2 pt-4">
                   <Button

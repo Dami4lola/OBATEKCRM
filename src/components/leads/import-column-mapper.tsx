@@ -12,7 +12,16 @@ const TARGET_FIELDS: { value: keyof LeadImportFields | 'skip'; label: string }[]
   { value: 'email', label: 'Email' },
   { value: 'phone', label: 'Phone' },
   { value: 'value', label: 'Deal Value' },
+  { value: 'payment_terms', label: 'Payment Terms' },
   { value: 'notes', label: 'Notes' },
+  { value: 'job_title', label: 'Job Title' },
+  { value: 'website', label: 'Website' },
+  { value: 'city', label: 'City' },
+  { value: 'region', label: 'Province/State' },
+  { value: 'country', label: 'Country' },
+  { value: 'vertical', label: 'Vertical / Industry' },
+  { value: 'staff_size', label: 'Staff Size' },
+  { value: 'linkedin_url', label: 'LinkedIn URL' },
 ]
 
 interface ImportColumnMapperProps {
@@ -36,6 +45,7 @@ export function ImportColumnMapper({ mappings, onMappingChange }: ImportColumnMa
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Map your file columns to lead fields. At minimum, <strong>Contact Name</strong> is required.
+        Map both First Name and Last Name to Contact Name to join them.
       </p>
 
       {!hasContactName && (

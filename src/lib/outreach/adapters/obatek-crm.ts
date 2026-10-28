@@ -1,0 +1,79 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database, Lead, Stage } from '@/types/database'
+import { parseOutreachSettings, type OutreachSettings } from '../settings'
+import { existingContactsFrom, type CandidateLead, type ExistingContacts } from '../sourcing'
+
+// The engine's only way into the OBATEK CRM database. A webhook or CSV
+// adapter for another CRM would offer these same functions.
+type Crm = SupabaseClient<Database>
+
+const PAGE_SIZE = 1000
+
+export async function fetchSettings(crm: Crm): Promise<OutreachSettings> {
+  const { data, error } = await crm.from('outreach_settings').select('*')
+  if (error) throw error
+  return parseOutreachSettings(data || [])
+}
+
+export async function findStageByName(crm: Crm, name: string): Promise<Stage | null> {
+  const { data, error } = await crm
+    .from('stages')
+    .select('*')
+    .ilike('name', name)
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// For dedupe: every lead's place id, website and phone
+export async function fetchExistingContacts(crm: Crm): Promise<ExistingContacts> {
+  const rows: { google_place_id: string | null; website: string | null; phone: string | null }[] = []
+
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await crm
+      .from('leads')
+      .select('google_place_id, website, phone')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    rows.push(...(data || []))
+    if (!data || data.length < PAGE_SIZE) break
+  }
+
+  return existingContactsFrom(rows)
+}
+
+export async function countLeadsSourcedSince(crm: Crm, since: Date): Promise<number> {
+  const { count, error } = await crm
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('lead_source', 'places')
+    .gte('created_at', since.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+// Appends to the end of the stage, like the importer
+export async function pushLeads(
+  crm: Crm,
+  stageId: string,
+  leads: CandidateLead[]
+): Promise<Lead[]> {
+  if (leads.length === 0) return []
+
+  const { data: last, error: lastError } = await crm
+    .from('leads')
+    .select('position_index')
+    .eq('stage_id', stageId)
+    .order('position_index', { ascending: false })
+    .limit(1)
+  if (lastError) throw lastError
+
+  let position = last?.[0]?.position_index ?? -1
+  const { data, error } = await crm
+    .from('leads')
+    .insert(leads.map((lead) => ({ ...lead, stage_id: stageId, position_index: ++position })))
+    .select()
+  if (error) throw error
+  return data || []
+}

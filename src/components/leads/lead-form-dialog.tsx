@@ -29,7 +29,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useCreateLead } from '@/lib/queries/leads'
-import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
+import {
+  leadSchema,
+  leadFormToRow,
+  type LeadFormData,
+} from '@/lib/validations/lead'
+import { LeadOutreachFields } from './lead-outreach-fields'
 
 interface LeadFormDialogProps {
   open: boolean
@@ -55,6 +60,15 @@ export function LeadFormDialog({
       payment_terms: null,
       notes: '',
       stage_id: '',
+      job_title: '',
+      website: '',
+      city: '',
+      region: '',
+      country: '',
+      vertical: '',
+      staff_size: null,
+      linkedin_url: '',
+      email_source: null,
     },
   })
 
@@ -67,15 +81,7 @@ export function LeadFormDialog({
 
   const onSubmit = async (data: LeadFormData) => {
     try {
-      await createLead.mutateAsync({
-        ...data,
-        value: data.value ?? null,
-        payment_terms: data.payment_terms ?? null,
-        email: data.email || null,
-        phone: data.phone || null,
-        company_name: data.company_name || null,
-        notes: data.notes || null,
-      })
+      await createLead.mutateAsync(leadFormToRow(data))
       toast.success('Lead created successfully')
       form.reset()
       onOpenChange(false)
@@ -86,7 +92,7 @@ export function LeadFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Lead</DialogTitle>
         </DialogHeader>
@@ -223,6 +229,8 @@ export function LeadFormDialog({
                 </FormItem>
               )}
             />
+
+            <LeadOutreachFields control={form.control} />
 
             <div className="flex justify-end gap-2 pt-4">
               <Button
