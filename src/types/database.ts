@@ -491,6 +491,10 @@ export interface Database {
           audit: Json
           primary_hook: OutreachHook | null
           steps: Json
+          opener: string | null
+          template_key: string | null
+          draft_steps: Json | null
+          drafted_at: string | null
           author: OutreachAuthor | null
           model: string | null
           instantly_campaign_id: string | null
@@ -517,6 +521,10 @@ export interface Database {
           audit?: Json
           primary_hook?: OutreachHook | null
           steps?: Json
+          opener?: string | null
+          template_key?: string | null
+          draft_steps?: Json | null
+          drafted_at?: string | null
           author?: OutreachAuthor | null
           model?: string | null
           instantly_campaign_id?: string | null
@@ -543,6 +551,10 @@ export interface Database {
           audit?: Json
           primary_hook?: OutreachHook | null
           steps?: Json
+          opener?: string | null
+          template_key?: string | null
+          draft_steps?: Json | null
+          drafted_at?: string | null
           author?: OutreachAuthor | null
           model?: string | null
           instantly_campaign_id?: string | null

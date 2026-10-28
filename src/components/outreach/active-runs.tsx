@@ -20,7 +20,10 @@ const STATUS_LABELS: Record<OutreachRunStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-export function ActiveRuns() {
+// Runs that have drafts to write or review
+const REVIEWABLE: OutreachRunStatus[] = ['preparing', 'awaiting_review']
+
+export function ActiveRuns({ onReview }: { onReview?: (runId: string) => void }) {
   const { data: runs = [] } = useActiveOutreachRuns()
   const cancelRun = useCancelOutreachRun()
 
@@ -48,6 +51,17 @@ export function ActiveRuns() {
               <span>{format(new Date(run.scheduled_for), 'PPp')}</span>
               <span className="text-xs text-muted-foreground">{run.mode}</span>
             </div>
+            <div className="flex items-center gap-1">
+            {onReview && REVIEWABLE.includes(run.status) && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => onReview(run.id)}
+              >
+                Review
+              </Button>
+            )}
             {run.status !== 'sending' && (
               <Button
                 variant="ghost"
@@ -59,6 +73,7 @@ export function ActiveRuns() {
                 Cancel
               </Button>
             )}
+            </div>
           </div>
         ))}
       </div>

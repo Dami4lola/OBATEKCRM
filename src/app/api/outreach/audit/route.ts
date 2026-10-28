@@ -5,23 +5,9 @@ import {
   countLeadsAuditedSince,
   fetchLead,
   fetchSettings,
-  findLeadIdByPlaceId,
-  updateLead,
 } from '@/lib/outreach/adapters/obatek-crm'
-import {
-  auditSite,
-  leadUpdatesFromAudit,
-  primaryHook,
-  type AuditLeadResult,
-  type ListingInfo,
-} from '@/lib/outreach/audit'
-import {
-  fetchPlaceReviews,
-  listingLeadUpdates,
-  matchListing,
-  searchPlaces,
-} from '@/lib/outreach/sourcing'
-import type { Lead, LeadUpdate } from '@/types/database'
+import { primaryHook, type AuditLeadResult } from '@/lib/outreach/audit-findings'
+import { runLeadAudit } from '@/lib/outreach/run-audit'
 
 const auditSchema = z.object({
   leadId: z.string().uuid(),
@@ -29,84 +15,6 @@ const auditSchema = z.object({
   lookupListing: z.boolean().default(true),
   force: z.boolean().default(false),
 })
-
-// Results of looking for a website the lead doesn't have on file
-interface WebsiteLookup {
-  website: string | null
-  noWebsiteConfirmed: boolean
-  listing: ListingInfo | null
-  placeId: string | null
-  updates: LeadUpdate
-  errors: string[]
-}
-
-type Supabase = Extract<Awaited<ReturnType<typeof requireTeamMember>>, { ok: true }>['supabase']
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
-}
-
-async function lookUpWebsite(
-  supabase: Supabase,
-  lead: Lead,
-  { enabled, apiKey }: { enabled: boolean; apiKey: string | undefined }
-): Promise<WebsiteLookup> {
-  const result: WebsiteLookup = {
-    website: lead.website,
-    noWebsiteConfirmed: false,
-    listing: null,
-    placeId: lead.google_place_id,
-    updates: {},
-    errors: [],
-  }
-  if (lead.website) return result
-
-  // Sourced from Google Places: its listing had no website
-  if (lead.google_place_id) {
-    result.noWebsiteConfirmed = true
-    return result
-  }
-
-  const company = lead.company_name?.trim()
-  if (!enabled) result.errors.push('Website lookup skipped')
-  else if (!apiKey) result.errors.push('Website lookup: GOOGLE_PLACES_API_KEY is not set')
-  else if (!company) result.errors.push('Website lookup: no company name to search for')
-  if (!enabled || !apiKey || !company) return result
-
-  try {
-    const places = await searchPlaces({
-      apiKey,
-      textQuery: [company, lead.city, lead.region].filter(Boolean).join(', '),
-      regionCode: lead.country?.trim() || undefined,
-      maxResults: 5,
-    })
-    const match = matchListing(
-      lead,
-      places.filter((place) => place.businessStatus !== 'CLOSED_PERMANENTLY')
-    )
-    if (!match) {
-      result.errors.push('Website lookup: no matching Google listing')
-      return result
-    }
-
-    const takenBy = await findLeadIdByPlaceId(supabase, match.place.id)
-    const savePlaceId = !takenBy || takenBy === lead.id
-    if (!savePlaceId) result.errors.push('Same Google listing as another lead (possible duplicate)')
-
-    result.updates = listingLeadUpdates(lead, match.place, { savePlaceId })
-    result.listing = {
-      place_id: match.place.id,
-      name: match.place.displayName?.text ?? null,
-      matched_on: match.matchedOn,
-    }
-    if (savePlaceId) result.placeId = match.place.id
-    if (match.place.websiteUri) result.website = match.place.websiteUri
-    else result.noWebsiteConfirmed = true
-  } catch (error) {
-    result.errors.push(`Website lookup: ${errorMessage(error)}`)
-  }
-  return result
-}
 
 // One lead per request: PageSpeed alone can take 20-60 seconds
 export async function POST(request: NextRequest) {
@@ -144,33 +52,11 @@ export async function POST(request: NextRequest) {
     }
 
     const placesKey = process.env.GOOGLE_PLACES_API_KEY
-    const lookup = await lookUpWebsite(supabase, lead, { enabled: lookupListing, apiKey: placesKey })
-
-    let reviews: string[] | null = null
-    const reviewErrors: string[] = []
-    if (checkReviews && lookup.placeId && placesKey) {
-      try {
-        reviews = await fetchPlaceReviews(placesKey, lookup.placeId)
-      } catch (error) {
-        reviewErrors.push(`Reviews: ${errorMessage(error)}`)
-      }
-    }
-
-    const audit = await auditSite({
-      website: lookup.website,
-      city: lead.city,
-      noWebsiteConfirmed: lookup.noWebsiteConfirmed,
-      listing: lookup.listing,
+    const { lead: updated, audit } = await runLeadAudit(supabase, lead, {
+      checkReviews,
+      lookupListing,
+      placesKey,
       pagespeedKey: process.env.PAGESPEED_API_KEY || placesKey,
-      reviews,
-    })
-    audit.errors.push(...lookup.errors, ...reviewErrors)
-
-    // Listing fields first (website, phone), then what the audit found
-    const withListing = { ...lead, ...lookup.updates } as Lead
-    const updated = await updateLead(supabase, lead.id, {
-      ...lookup.updates,
-      ...leadUpdatesFromAudit(withListing, audit),
     })
     const result: AuditLeadResult = { lead: updated, audit, hook: primaryHook(audit), skipped: null }
     return NextResponse.json(result)

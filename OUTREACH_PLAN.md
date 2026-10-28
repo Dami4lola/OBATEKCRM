@@ -1,6 +1,6 @@
 # OBATEK CRM — Lead Engine: Build Spec
 
-**Owner:** Dami Ayoade · **Status:** Building (stages 1–4 done) · **Last updated:** 2026-10-27
+**Owner:** Dami Ayoade · **Status:** Building (stages 1–5 done) · **Last updated:** 2026-10-27
 
 This is the implementation spec for **"OBATEK Lead Engine — Build Plan.md"**. That plan covers the strategy: ICP, pain signals, delivery modes, metrics. This file says how it gets built in this repo.
 
@@ -227,18 +227,20 @@ US leads are covered by the same footer (CAN-SPAM) and honest subject lines.
 
 ---
 
-## 8. Copywriter (`src/lib/outreach/copywriter.ts`)
+## 8. Copywriter (`src/lib/outreach/copywriter.ts`, built)
 
 **Changed to match the Build Plan:** Claude writes only the **subject line and one specific opening line**. Everything else is a short, fixed template, so results can be compared across leads.
 
-- **Model:** `claude-sonnet-5-5`. One call per lead returns `{"subject": "...", "opener": "..."}`.
+- **Model:** `claude-opus-5-5` (setting `copy_model`; chosen over Sonnet 5.5 for quality, about $15–30 per 750 leads). One call per lead through `/api/outreach/prepare` returns `{ subject, opener }` via structured output (`client.beta.messages.parse` + Zod), effort `medium`, with server-side `fallbacks: "default"` in case of a refusal. The system prompt (`prompts/copy-system.ts`) is cached.
+- **Prepare** also refreshes the site check if it's missing or older than `audit_max_age_days`, and is capped at `draft_daily_cap` (300) drafts a day.
+- **Checks before use (§16 S3):** subject 2–5 words, opener under ~40 words and at most two sentences, no links/emails/phone numbers, no banned phrases, no repeated greeting. One retry with the broken rules spelled out; after that the opener is left blank to write by hand. Website findings and review snippets go in as quoted data, with an instruction that they aren't instructions.
 - **Prompt inputs:**
   - Lead: company, vertical, city, owner name/first name, job title.
   - Audit findings, the primary hook, and review/hiring signals.
   - Up to `example_max_in_prompt` winning openers (§9), same vertical first.
-- **Templates:** `outreach_settings.email_templates`, keyed by vertical with a `default`.
-  - Each has 3 steps with `{{first_name}}`, `{{company}}`, `{{opener}}` and `{{offer}}` placeholders.
-  - The rendered text for all 3 steps is stored in `outreach_emails.steps`, with `opener` and `template_key` alongside.
+- **Templates:** `outreach_settings.email_templates` (`009_write_step.sql`), keyed by vertical with a `default`. Also `sender_name`. Edit them in the settings table for now.
+  - Each has 3 steps with `{{first_name}}` (owner, else contact, else "there"), `{{company}}`, `{{opener}}`, `{{subject}}`, `{{sender_name}}` and `{{sender_first_name}}`. Emails 2–3 reuse the subject as `re: …`.
+  - The rendered text for all 3 steps is stored in `outreach_emails.steps`, with `opener` and `template_key` alongside. Claude's untouched version goes in `draft_steps`; on approval, `author` becomes `claude` if unchanged, `claude_edited` if edited, `human` if Claude's draft was rejected or never made.
   - Email 1's offer is the **free ops audit** (Build Plan, inbound layer).
 - **Copy rules** (`src/lib/outreach/prompts/copy-system.md`):
   - Opener: one or two sentences, one specific observation from the audit or reviews, nothing invented
@@ -359,7 +361,9 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   audit.ts             ✅ # fetch + HTML checks (server only)
   audit-findings.ts    ✅ # result type, hook, signals, findings (browser-safe)
   safe-fetch.ts        ✅ # SSRF-guarded page fetch
-  copywriter.ts
+  copywriter.ts        ✅ # Claude subject + opener, rule checks (server only)
+  templates.ts         ✅ # fill the 3-email template, author tracking (browser-safe)
+  run-audit.ts         ✅ # full site check for one lead, shared by audit + prepare
   examples.ts          # winner selection + stats
   instantly-client.ts
   prompts/
@@ -375,11 +379,11 @@ src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
   find-leads-dialog.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
-  write-step.tsx  send-step.tsx  outreach-stats.tsx
+  write-step.tsx ✅  send-step.tsx  outreach-stats.tsx
 src/app/api/outreach/
   source/route.ts          ✅ # Places search + dedupe + insert
   audit/route.ts           ✅ # site check (+ optional reviews), one lead
-  prepare/route.ts            # audit refresh + Claude subject/opener, one lead
+  prepare/route.ts         ✅ # audit refresh + Claude subject/opener, one lead
   send/route.ts               # push one approved email, log activity, move lead
   cron/tick/route.ts          # due runs + stats polling (CRON_SECRET)
 scripts/outreach-scheduler.mjs
@@ -403,7 +407,7 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | — | S ✅ | Security: `003_team_access.sql`, no-access screen, route guards, callback redirect check, safe links (§16) | Only team members see data |
 | 1 | 3 ✅ | `004_sourcing.sql`; `sourcing.ts` + Find leads dialog; `scoring.ts`; score in the Gather step and on lead cards; **Today's calls** with basic briefs and outcome logging | 50+ Ottawa handyman leads in New with scores; call the top 15 by hand |
 | 2 | 4 ✅ | `005_audit.sql`; `audit.ts` (incl. email and owner discovery, SSRF-safe fetch) feeding `signals`; reviews signal; Check sites dialog; site check on the lead sheet; findings in call briefs | 50 real sites audited; 3 calls a day |
-| 3 | 5 | Write step: Claude subject + opener, templates, approval | 20 drafts approved in the pop-up |
+| 3 | 5 ✅ | `009_write_step.sql`; Write step in the pop-up (Start run → drafts, or Review on an active run); Draft all with Claude; edit opener or full emails; approve/skip/undo | 20 drafts approved in the pop-up |
 | 3 | 6 | Instantly send + move to Contacted; scheduler + stats polling | A test run to your own inboxes sends 3 steps; then about 20 real emails a day |
 | 4 | 7 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
 | 5+ | 8 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |

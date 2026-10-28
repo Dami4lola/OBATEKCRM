@@ -25,6 +25,16 @@ export interface OutreachSettings {
   audit_daily_cap: number
   generic_email_keep_score: number
   small_business_max_staff: number
+  email_templates: Record<string, TemplateStep[]>
+  sender_name: string
+  copy_model: string
+  draft_daily_cap: number
+}
+
+export interface TemplateStep {
+  step: 1 | 2 | 3
+  subject: string
+  body: string
 }
 
 export interface ScoreWeights {
@@ -34,7 +44,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql and 008_company_size.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql and 009_write_step.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -60,6 +70,29 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   audit_daily_cap: 800,
   generic_email_keep_score: 7,
   small_business_max_staff: 50,
+  // Mirrors 009_write_step.sql; edit there (or in the settings table)
+  email_templates: {
+    default: [
+      {
+        step: 1,
+        subject: '{{subject}}',
+        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK here in Ottawa. We set up simple tools for trades businesses: online quotes and booking, job tracking, and an AI receptionist that picks up when you're on a job.\n\nWould a free one-page audit of how {{company}} handles calls and quotes be useful?\n\n{{sender_name}}",
+      },
+      {
+        step: 2,
+        subject: 're: {{subject}}',
+        body: 'Hi {{first_name}},\n\nFollowing up in case my last note got buried. If missed calls or slow quotes ever cost {{company}} a job, the free audit would show where. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}',
+      },
+      {
+        step: 3,
+        subject: 're: {{subject}}',
+        body: 'Hi {{first_name}},\n\nI\'ll leave it here. If it\'s ever useful, reply "audit" and I\'ll put it together for {{company}}.\n\n{{sender_first_name}}',
+      },
+    ],
+  },
+  sender_name: 'Dami Ayoade',
+  copy_model: 'claude-opus-5-5',
+  draft_daily_cap: 300,
 }
 
 // Missing or unknown keys fall back to the defaults

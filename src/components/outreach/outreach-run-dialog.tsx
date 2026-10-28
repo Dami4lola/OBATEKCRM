@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { addDays, format, setHours, setMinutes } from 'date-fns'
 import { toast } from 'sonner'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,9 @@ import {
 import { GatherStep } from './gather-step'
 import { ScheduleStep, type RunTiming } from './schedule-step'
 import { ActiveRuns } from './active-runs'
+import { WriteStep } from './write-step'
 
-type Step = 'gather' | 'when' | 'done'
+type Step = 'gather' | 'when' | 'write'
 
 const DATETIME_LOCAL = "yyyy-MM-dd'T'HH:mm"
 
@@ -44,8 +45,8 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
   const [timing, setTiming] = useState<RunTiming>('now')
   const [scheduledFor, setScheduledFor] = useState('')
   const [minScheduledFor, setMinScheduledFor] = useState('')
-  // Leads added by a Run now; the gather query refetches after the run is created
-  const [startedCount, setStartedCount] = useState<number | null>(null)
+  // The run whose drafts the Write step shows
+  const [runId, setRunId] = useState<string | null>(null)
 
   const gather = useOutreachGather(open)
   const createRun = useCreateOutreachRun()
@@ -68,7 +69,7 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
       setToggledIds(new Set())
       setTiming('now')
       setScheduledFor('')
-      setStartedCount(null)
+      setRunId(null)
     }
     onOpenChange(nextOpen)
   }
@@ -119,7 +120,7 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
     }
 
     try {
-      await createRun.mutateAsync({
+      const run = await createRun.mutateAsync({
         rows,
         selectedIds,
         scheduledFor: runAt,
@@ -129,8 +130,8 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
         toast.success(`Outreach scheduled for ${format(runAt, 'PPp')}`)
         handleOpenChange(false)
       } else {
-        setStartedCount(selectedIds.size)
-        setStep('done')
+        setRunId(run.id)
+        setStep('write')
       }
     } catch (error) {
       toast.error('Failed to start the run')
@@ -145,13 +146,13 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`${step === 'write' ? 'sm:max-w-3xl' : 'sm:max-w-2xl'} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>
               {step === 'gather' && 'Run outreach'}
               {step === 'when' && 'When should it run?'}
-              {step === 'done' && 'Run started'}
+              {step === 'write' && 'Write and approve'}
             </DialogTitle>
             {gather.data && (
               <Badge variant="outline">{gather.data.settings.mode} mode</Badge>
@@ -190,7 +191,12 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
                   onToggleAll={handleToggleAll}
                 />
               )}
-              <ActiveRuns />
+              <ActiveRuns
+                onReview={(id) => {
+                  setRunId(id)
+                  setStep('write')
+                }}
+              />
             </>
           )}
 
@@ -206,19 +212,7 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
             />
           )}
 
-          {step === 'done' && startedCount !== null && (
-            <div className="space-y-2 py-4 text-center">
-              <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
-              <p className="font-medium">
-                {startedCount} lead{startedCount === 1 ? '' : 's'} added
-                to this run
-              </p>
-              <p className="text-sm text-muted-foreground">
-                The writing step isn&apos;t built yet. This run stays under
-                Active runs until it is, and the leads stay in {stageName}.
-              </p>
-            </div>
-          )}
+          {step === 'write' && runId && <WriteStep runId={runId} />}
         </div>
 
         <DialogFooter>
@@ -249,8 +243,8 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
               </Button>
             </>
           )}
-          {step === 'done' && (
-            <Button onClick={() => handleOpenChange(false)}>Close</Button>
+          {step === 'write' && (
+            <Button onClick={() => handleOpenChange(false)}>Done for now</Button>
           )}
         </DialogFooter>
       </DialogContent>

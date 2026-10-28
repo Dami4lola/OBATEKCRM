@@ -1,7 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Lead, LeadUpdate, Stage } from '@/types/database'
+import type {
+  Database,
+  Lead,
+  LeadUpdate,
+  OutreachEmail,
+  OutreachEmailUpdate,
+  Stage,
+} from '@/types/database'
 import { parseOutreachSettings, type OutreachSettings } from '../settings'
 import { existingContactsFrom, type CandidateLead, type ExistingContacts } from '../sourcing'
+import type { CopyExample } from '../copywriter'
+import { parseSteps } from '../templates'
 
 // The engine's only way into the OBATEK CRM database. A webhook or CSV
 // adapter for another CRM would offer these same functions.
@@ -127,4 +136,71 @@ export async function findLeadIdByPlaceId(crm: Crm, placeId: string): Promise<st
     .maybeSingle()
   if (error) throw error
   return data?.id ?? null
+}
+
+export async function fetchOutreachEmail(crm: Crm, id: string): Promise<OutreachEmail | null> {
+  const { data, error } = await crm.from('outreach_emails').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function updateOutreachEmail(
+  crm: Crm,
+  id: string,
+  updates: OutreachEmailUpdate
+): Promise<OutreachEmail> {
+  const { data, error } = await crm
+    .from('outreach_emails')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function countDraftsSince(crm: Crm, since: Date): Promise<number> {
+  const { count, error } = await crm
+    .from('outreach_emails')
+    .select('id', { count: 'exact', head: true })
+    .gte('drafted_at', since.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+// Winning emails for the prompt, same vertical first (§9)
+export async function fetchCopyExamples(
+  crm: Crm,
+  vertical: string | null,
+  limit: number
+): Promise<CopyExample[]> {
+  if (limit <= 0) return []
+  const { data, error } = await crm
+    .from('outreach_emails')
+    .select('opener, steps, leads(vertical)')
+    .eq('is_example', true)
+    .not('opener', 'is', null)
+    .order('sent_at', { ascending: false, nullsFirst: false })
+    .limit(50)
+  if (error) throw error
+
+  const examples = (data || []).map((row) => ({
+    vertical: (row.leads as { vertical: string | null } | null)?.vertical ?? null,
+    subject: parseSteps(row.steps)[0]?.subject ?? '',
+    opener: row.opener ?? '',
+  }))
+  return examples
+    .filter((e) => e.subject && e.opener)
+    .sort((a, b) => Number(b.vertical === vertical) - Number(a.vertical === vertical))
+    .slice(0, limit)
+}
+
+// A run moves to review once its first draft exists
+export async function markRunAwaitingReview(crm: Crm, runId: string): Promise<void> {
+  const { error } = await crm
+    .from('outreach_runs')
+    .update({ status: 'awaiting_review' })
+    .eq('id', runId)
+    .eq('status', 'preparing')
+  if (error) throw error
 }
