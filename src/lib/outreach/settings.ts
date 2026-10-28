@@ -21,6 +21,10 @@ export interface OutreachSettings {
   auto_unlock_min_days: number
   places_max_results: number
   places_daily_lead_cap: number
+  audit_max_age_days: number
+  audit_daily_cap: number
+  generic_email_keep_score: number
+  small_business_max_staff: number
 }
 
 export interface ScoreWeights {
@@ -30,7 +34,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql and 004_sourcing.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql and 008_company_size.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -52,6 +56,10 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   auto_unlock_min_days: 14,
   places_max_results: 60,
   places_daily_lead_cap: 200,
+  audit_max_age_days: 30,
+  audit_daily_cap: 800,
+  generic_email_keep_score: 7,
+  small_business_max_staff: 50,
 }
 
 // Missing or unknown keys fall back to the defaults

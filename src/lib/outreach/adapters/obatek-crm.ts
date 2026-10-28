@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Lead, Stage } from '@/types/database'
+import type { Database, Lead, LeadUpdate, Stage } from '@/types/database'
 import { parseOutreachSettings, type OutreachSettings } from '../settings'
 import { existingContactsFrom, type CandidateLead, type ExistingContacts } from '../sourcing'
 
@@ -26,7 +26,8 @@ export async function findStageByName(crm: Crm, name: string): Promise<Stage | n
   return data
 }
 
-// For dedupe: every lead's place id, website and phone
+// For dedupe: every lead's place id, website and phone, plus businesses
+// deleted with Clean up so they aren't sourced again
 export async function fetchExistingContacts(crm: Crm): Promise<ExistingContacts> {
   const rows: { google_place_id: string | null; website: string | null; phone: string | null }[] = []
 
@@ -37,6 +38,23 @@ export async function fetchExistingContacts(crm: Crm): Promise<ExistingContacts>
       .range(from, from + PAGE_SIZE - 1)
     if (error) throw error
     rows.push(...(data || []))
+    if (!data || data.length < PAGE_SIZE) break
+  }
+
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await crm
+      .from('dismissed_leads')
+      .select('google_place_id, website_host, phone_digits')
+      .range(from, from + PAGE_SIZE - 1)
+    // Before 006_dismissed_leads.sql is applied the table doesn't exist
+    if (error) break
+    rows.push(
+      ...(data || []).map((row) => ({
+        google_place_id: row.google_place_id,
+        website: row.website_host,
+        phone: row.phone_digits,
+      }))
+    )
     if (!data || data.length < PAGE_SIZE) break
   }
 
@@ -76,4 +94,37 @@ export async function pushLeads(
     .select()
   if (error) throw error
   return data || []
+}
+
+export async function fetchLead(crm: Crm, id: string): Promise<Lead | null> {
+  const { data, error } = await crm.from('leads').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function updateLead(crm: Crm, id: string, updates: LeadUpdate): Promise<Lead> {
+  const { data, error } = await crm.from('leads').update(updates).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function countLeadsAuditedSince(crm: Crm, since: Date): Promise<number> {
+  const { count, error } = await crm
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .gte('audited_at', since.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+// google_place_id is unique, so check before saving one found by a lookup
+export async function findLeadIdByPlaceId(crm: Crm, placeId: string): Promise<string | null> {
+  const { data, error } = await crm
+    .from('leads')
+    .select('id')
+    .eq('google_place_id', placeId)
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data?.id ?? null
 }

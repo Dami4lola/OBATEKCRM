@@ -109,8 +109,8 @@ export function FindLeadsDialog() {
               )}
             </ul>
             <p className="text-xs text-muted-foreground">
-              Places doesn&apos;t give emails or staff size. Those come from
-              the site check (next build stage), Lusha or the lead sheet.
+              Next: <strong>Check sites</strong> finds emails and owner names
+              on their websites. Staff size comes from Lusha or the lead sheet.
             </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setResult(null)}>

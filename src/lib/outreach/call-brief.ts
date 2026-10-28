@@ -1,5 +1,6 @@
 import type { Lead } from '@/types/database'
 import { PAIN_SIGNAL_LABELS, type LeadScore, type PainSignal } from './scoring'
+import { auditFindings, parseAudit } from './audit-findings'
 
 // One question per pain signal, asked in this order of preference
 const CALL_QUESTIONS: [PainSignal, string][] = [
@@ -33,6 +34,7 @@ type BriefLead = Pick<
   | 'city'
   | 'google_rating'
   | 'google_review_count'
+  | 'audit'
 >
 
 export function callQuestion(painSignals: PainSignal[]): string {
@@ -67,11 +69,15 @@ export function buildCallBrief(lead: BriefLead, score: LeadScore): string {
       ? 'No pain signal found'
       : 'Not checked yet'
 
+  const audit = parseAudit(lead.audit)
+  const site = audit ? auditFindings(audit).slice(0, 3).join('; ') : null
+
   return [
     `Who: ${personToAskFor(lead)}`,
     `Business: ${place}${rating}`,
     `Phone: ${lead.phone ?? 'none'}`,
     `Pain: ${pain}`,
+    ...(site ? [`Site: ${site}`] : []),
     `Ask: ${callQuestion(score.painSignals)}`,
     `Score: ${score.score}/${score.max}`,
   ].join('\n')

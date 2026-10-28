@@ -1,6 +1,6 @@
 # OBATEK CRM — Lead Engine: Build Spec
 
-**Owner:** Dami Ayoade · **Status:** Building (stages 1–3 done) · **Last updated:** 2026-10-27
+**Owner:** Dami Ayoade · **Status:** Building (stages 1–4 done) · **Last updated:** 2026-10-27
 
 This is the implementation spec for **"OBATEK Lead Engine — Build Plan.md"**. That plan covers the strategy: ICP, pain signals, delivery modes, metrics. This file says how it gets built in this repo.
 
@@ -13,7 +13,7 @@ The engine works in four steps:
 The engine starts in **manual mode**: you approve every email. The best performers become the examples Claude learns from. Once results hold up, you switch to **auto mode**.
 
 **Stack:** Next.js 16 (App Router) · TypeScript · Supabase · React Query · shadcn/ui, all in this repo. It runs **locally on Dami's laptop** (`npm run dev` / `npm start`), not on Vercel.
-**Database:** `supabase/migrations/002_outreach.sql` (applied), `003_team_access.sql` (§16) and `004_sourcing.sql` (§4). Types are in `src/types/database.ts`.
+**Database:** `supabase/migrations/002_outreach.sql` (applied), `003_team_access.sql` (§16), `004_sourcing.sql` (§4) and `005_audit.sql` (§5). Types are in `src/types/database.ts`.
 
 **Starting ICP:** handyman and home-repair businesses with 2–10 staff that run jobs out of spreadsheets and texts. Bigger HVAC and electrical firms come later.
 
@@ -65,7 +65,18 @@ Stages are always resolved by **name** from settings, never by hard-coded ID.
 A **Find leads** dialog has inputs for vertical, city and max results. It pulls businesses from the **Google Places API (New)** Text Search, for example `"handyman in Ottawa, ON"`.
 
 - **Fields used:** `id` (place_id), display name, formatted address and address components (city, region, country), phone, `websiteUri`, rating and review count. Request only the fields used (field mask), because cost depends on the fields.
-- **Dedupe** through the adapter's `fetchExistingContacts()` before insert: match on `google_place_id`, then website domain, then phone digits.
+- **Dedupe** through the adapter's `fetchExistingContacts()` before insert: match on `google_place_id`, then website domain, then phone digits. This also covers businesses deleted with Clean up (`dismissed_leads`).
+- **Clean up** (dashboard header) deletes checked leads in New that score below a cutoff (default: the outreach threshold). Leads with calls, meetings, sent emails or open tasks are never offered, because deleting a lead cascades to all of them. Each deleted business's place id, website host and phone are kept in `dismissed_leads` (`006_dismissed_leads.sql`), so it isn't sourced again.
+- Clean up also offers leads whose **only** known email (on the lead or found by the site check) is a shared inbox (`info@`, `office@`, `contact@`…, list in `src/lib/outreach/cleanup.ts`), but **only for companies over `small_business_max_staff` (50)**, and not if they score at least `generic_email_keep_score` (7). At a small company, info@ usually reaches the owner. The site check saves a person's address ahead of a shared inbox when a site shows both.
+- **Company size** (`src/lib/outreach/company-size.ts`, first match wins):
+  1. `staff_size` on the lead.
+  2. Team-size wording on the site ("team of 12", "over 60 employees", "25+ technicians").
+  3. 4+ locations listed on the site → large.
+  4. "Owner-operated" / "family owned" → small.
+  5. Google reviews: 1,500+ → large; under 150 → small (weak).
+  6. Otherwise unknown, which counts as small.
+
+  Website traffic and domain age aren't used: there's no free source for traffic, and age measures how old a business is, not how big. Leads checked before this have no site wording until re-checked. The lead sheet shows the size and its evidence.
 - New leads go into the **New** stage with `lead_source='places'` and `contact_name` set to the business name until the owner is found.
 - **Emails:** Places does not return emails.
   - The audit (§5) reads the homepage and contact page for a published address and saves it with `email_source='website'`, which is the CASL-safe basis (§7).
@@ -113,13 +124,24 @@ Default weights, from the Build Plan, stored in `outreach_settings.score_weights
 
 ---
 
-## 5. Site audit (`src/lib/outreach/audit.ts`)
+## 5. Site audit (`src/lib/outreach/audit.ts`, built)
 
-Runs per lead after sourcing (for scoring) and again before drafting if the audit is over 30 days old. The result goes in `outreach_emails.audit` (JSONB) and `primary_hook`. The scoring inputs are copied onto the lead.
+Run from **Check sites** (dashboard header: every lead in New not checked in the last `audit_max_age_days`) or **Check site** on the lead sheet. `/api/outreach/audit` checks one lead per request, and the dialog runs 3 at a time.
+
+- The full result is stored on the lead (`leads.audit`, `audited_at`; `005_audit.sql`). Pain signals are merged into `leads.signals`, so the score and call brief update straight away. Stage 5 copies the audit into `outreach_emails.audit` when it drafts.
+- Only gaps are filled: a published email is saved when the lead has none (`email_source='website'`). The owner's name is saved when there's none, and it replaces the contact when the contact was just the business name. If the lead's existing email (e.g. from Lusha) is published on the site, its source becomes `website`, the CASL basis.
+- **Reviews (opt-in):** the "Also scan Google reviews" box makes one Place Details call per lead (reviews only, at Google's top price tier; at most 5 reviews). Snippets that mention slow callbacks are saved and shown on the lead sheet.
+- **Missing websites are looked up, not assumed.** With an empty Website field:
+  - Leads from Find leads already had Google's listing checked (no website there), so the status is **no website (confirmed)**.
+  - For other leads, one Places Text Search runs on "{company}, {city}". A listing is used only if it matches on phone, email domain (not free mail), or name + city; a single-word name never matches.
+  - If the listing has a website, it's saved and checked. If it has none, the status is confirmed. Otherwise the status is **website unknown**: +0, never the no-site angle.
+  - The place id, rating and phone are saved too, unless another lead already has that listing (flagged as a possible duplicate).
+  - "Look up missing websites on Google" in Check sites is on by default. Audits from before this change count as "unknown" and are queued for re-checking.
+- Fetching goes through `safe-fetch.ts` (§16 S2).
 
 | Check | Method | Field |
 |---|---|---|
-| Site exists / resolves | `fetch` with redirects, 10s timeout | `has_site` |
+| Site exists / resolves | `safeFetch`: up to 3 redirects, 10s, 2 MB; Facebook/directory pages count as no site | `has_site`, `dead_site` (DNS failure, connection error, 5xx, 404) |
 | HTTPS / SSL | final URL scheme | `https` |
 | Mobile-friendly | `<meta name="viewport">` present | `mobile_viewport` |
 | Performance | Google PageSpeed Insights API v5, mobile | `perf_score` (0–100) |
@@ -127,7 +149,7 @@ Runs per lead after sourcing (for scoring) and again before drafting if the audi
 | Online booking / quote | form, or links/text matching quote, book, estimate, schedule, or widgets (Jobber, Housecall Pro, ServiceTitan, Calendly) | `has_booking`, `booking_tool` |
 | Contact form | `<form>` with an email/message field | `has_contact_form` |
 | Published email | `mailto:` links and plain addresses on the homepage and `/contact` | `emails_found` → lead `email`, `email_source='website'` |
-| Owner name | About page text (Claude Haiku extracts the name + role) | `owner_name` |
+| Owner name | Patterns on the about/contact pages ("Robert Smith, Owner", "founded by …"). Shown as unverified. Claude Haiku can replace this if it proves too noisy | `owner_name` |
 | Basic SEO | `<title>`, meta description, single `<h1>`, city in title or H1 | `seo_issues` |
 | Contact visibility | phone number on homepage | `phone_on_homepage` |
 
@@ -135,7 +157,9 @@ The **primary hook** is the first match in this order: `no_site`, `no_booking`, 
 
 **Rules:**
 - Respect robots.txt.
-- Make at most 3 page requests per domain (home, contact, about) plus the PageSpeed call.
+- Make at most 3 page requests per domain (home, contact, about) plus robots.txt and the PageSpeed call.
+- A 403/429 homepage (bot blocker) records no findings rather than guessing, and the hook stays `generic`.
+- `audit_daily_cap` (800) checks per day, enforced server-side (`007_cleanup_rules.sql`).
 - Reuse an audit for the same lead if it's under 30 days old.
 
 The same audit data later produces the **free ops audit PDF** (Week 4), which is the inbound call to action.
@@ -332,7 +356,9 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   sourcing.ts          ✅ # Places search → candidate leads, dedupe
   scoring.ts           ✅
   call-brief.ts        ✅
-  audit.ts
+  audit.ts             ✅ # fetch + HTML checks (server only)
+  audit-findings.ts    ✅ # result type, hook, signals, findings (browser-safe)
+  safe-fetch.ts        ✅ # SSRF-guarded page fetch
   copywriter.ts
   examples.ts          # winner selection + stats
   instantly-client.ts
@@ -347,10 +373,12 @@ src/lib/queries/outreach.ts  ✅    # React Query hooks
 src/lib/queries/calls.ts     ✅
 src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
-  find-leads-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
+  find-leads-dialog.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
+src/components/leads/lead-site-check.tsx ✅
   write-step.tsx  send-step.tsx  outreach-stats.tsx
 src/app/api/outreach/
-  source/route.ts          ✅ # Places search + dedupe + insert (audit added in stage 4)
+  source/route.ts          ✅ # Places search + dedupe + insert
+  audit/route.ts           ✅ # site check (+ optional reviews), one lead
   prepare/route.ts            # audit refresh + Claude subject/opener, one lead
   send/route.ts               # push one approved email, log activity, move lead
   cron/tick/route.ts          # due runs + stats polling (CRON_SECRET)
@@ -374,7 +402,7 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 1 | 0 | Phase 0 started (§13) | Warm-up running in Instantly |
 | — | S ✅ | Security: `003_team_access.sql`, no-access screen, route guards, callback redirect check, safe links (§16) | Only team members see data |
 | 1 | 3 ✅ | `004_sourcing.sql`; `sourcing.ts` + Find leads dialog; `scoring.ts`; score in the Gather step and on lead cards; **Today's calls** with basic briefs and outcome logging | 50+ Ottawa handyman leads in New with scores; call the top 15 by hand |
-| 2 | 4 | `audit.ts` (incl. email and owner discovery, SSRF-safe fetch) feeding `signals`; reviews signal; richer briefs | 50 real sites audited; 3 calls a day |
+| 2 | 4 ✅ | `005_audit.sql`; `audit.ts` (incl. email and owner discovery, SSRF-safe fetch) feeding `signals`; reviews signal; Check sites dialog; site check on the lead sheet; findings in call briefs | 50 real sites audited; 3 calls a day |
 | 3 | 5 | Write step: Claude subject + opener, templates, approval | 20 drafts approved in the pop-up |
 | 3 | 6 | Instantly send + move to Contacted; scheduler + stats polling | A test run to your own inboxes sends 3 steps; then about 20 real emails a day |
 | 4 | 7 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
@@ -392,7 +420,7 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 | # | Risk | Rule | Stage |
 |---|---|---|---|
 | S1 ✅ | **Open signup + "authenticated" RLS.** Anyone who signs up can read and edit every lead, run and email | `003_team_access.sql`: every policy checks `is_team_member()` (the `team_members` table, edited only in the SQL editor). Non-members see a no-access screen. Also disable public signup in Supabase (Authentication → Sign In / Providers) | now |
-| S2 | **SSRF from the site audit.** Lead `website` values come from CSVs and Places, and the server fetches them | Only `http`/`https` on ports 80/443. Resolve DNS and reject loopback, private, link-local and metadata addresses (`127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fc00::/7`), checking again after every redirect. Max 3 redirects, 10s timeout, 2 MB body cap. Never send cookies or auth headers | 4 |
+| S2 ✅ | **SSRF from the site audit.** Lead `website` values come from CSVs and Places, and the server fetches them | Only `http`/`https` on ports 80/443. Resolve DNS and reject loopback, private, link-local and metadata addresses (`127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fc00::/7`), checking again after every redirect. Max 3 redirects, 10s timeout, 2 MB body cap. Never send cookies or auth headers. Done in `safe-fetch.ts`: the IP check runs inside the connection's DNS lookup, so a rebinding answer can't slip past it | 4 |
 | S3 | **Prompt injection from scraped pages and replies.** Site text and reply bodies reach Claude | Pass scraped text as quoted data in its own block, stripped of HTML and truncated. The system prompt says to never follow instructions in it. Validate the output: JSON shape, length limits, no URLs or email addresses in the opener/subject. In auto mode, anything that fails validation drops to manual review instead of sending | 5, 6, 8 |
 | S4 ✅ | **Cron route abuse.** `/api/outreach/cron/tick` starts runs and sends email | `hasValidCronSecret()` in `src/lib/api/guards.ts`: `Authorization: Bearer $CRON_SECRET`, compared with `crypto.timingSafeEqual`. Fails when `CRON_SECRET` is unset. Return 401 with no detail | helper done; route in 6 |
 | S5 | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `INSTANTLY_API_KEY` and `GOOGLE_PLACES_API_KEY` | 3+ |
@@ -411,5 +439,6 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 - Places + Claude cost per qualified lead (§12 logs the call counts)
 - Self-hosting from the start or only on request
 - Which CRM the first bigger prospect runs
+- Lusha company-size enrichment for leads whose size stays unknown (costs credits; the Lusha connector is available)
 - A blank country currently blocks email (CASL safety). Places leads always have a country, so this mostly affects old imports
 - `email_accounts` / `email_logs` are used by the Outlook connect/send code but don't exist in the live database. They need their own migration before the Outlook path works

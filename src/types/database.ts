@@ -140,6 +140,8 @@ export interface Database {
           google_review_count: number | null
           owner_name: string | null
           signals: Json
+          audit: Json | null
+          audited_at: string | null
           position_index: number
           created_at: string
           updated_at: string
@@ -169,6 +171,8 @@ export interface Database {
           google_review_count?: number | null
           owner_name?: string | null
           signals?: Json
+          audit?: Json | null
+          audited_at?: string | null
           position_index?: number
           created_at?: string
           updated_at?: string
@@ -198,6 +202,8 @@ export interface Database {
           google_review_count?: number | null
           owner_name?: string | null
           signals?: Json
+          audit?: Json | null
+          audited_at?: string | null
           position_index?: number
           created_at?: string
           updated_at?: string
@@ -593,6 +599,39 @@ export interface Database {
         }
         Relationships: []
       }
+      dismissed_leads: {
+        Row: {
+          id: string
+          google_place_id: string | null
+          website_host: string | null
+          phone_digits: string | null
+          company_name: string | null
+          reason: string | null
+          dismissed_by: string | null
+          dismissed_at: string
+        }
+        Insert: {
+          id?: string
+          google_place_id?: string | null
+          website_host?: string | null
+          phone_digits?: string | null
+          company_name?: string | null
+          reason?: string | null
+          dismissed_by?: string | null
+          dismissed_at?: string
+        }
+        Update: {
+          id?: string
+          google_place_id?: string | null
+          website_host?: string | null
+          phone_digits?: string | null
+          company_name?: string | null
+          reason?: string | null
+          dismissed_by?: string | null
+          dismissed_at?: string
+        }
+        Relationships: []
+      }
       team_members: {
         Row: {
           user_id: string
@@ -692,6 +731,7 @@ export type OutreachEmailUpdate = Database['public']['Tables']['outreach_emails'
 export type Suppression = Database['public']['Tables']['suppression_list']['Row']
 export type SuppressionInsert = Database['public']['Tables']['suppression_list']['Insert']
 export type OutreachSetting = Database['public']['Tables']['outreach_settings']['Row']
+export type DismissedLeadInsert = Database['public']['Tables']['dismissed_leads']['Insert']
 
 // Shape of each entry in outreach_emails.steps
 export interface OutreachEmailStep {

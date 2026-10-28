@@ -21,6 +21,7 @@ import type {
   Stage,
 } from '@/types/database'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
+import type { AuditLeadResult } from '@/lib/outreach/audit-findings'
 
 export const ACTIVE_RUN_STATUSES: OutreachRunStatus[] = [
   'scheduled',
@@ -337,6 +338,83 @@ export function useSourceLeads() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
       queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+export async function requestLeadAudit(input: {
+  leadId: string
+  checkReviews: boolean
+  lookupListing: boolean
+  force?: boolean
+}): Promise<AuditLeadResult> {
+  const response = await fetch('/api/outreach/audit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error || 'Failed to check the site')
+  return body as AuditLeadResult
+}
+
+// Re-check one lead from the lead sheet
+export function useAuditLead() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { leadId: string; checkReviews: boolean }) =>
+      requestLeadAudit({ ...input, lookupListing: true, force: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+      queryClient.invalidateQueries({ queryKey: ['calls'] })
+    },
+  })
+}
+
+// Never checked, checked too long ago, or no website and checked before the
+// Google lookup existed (so "no website" was never confirmed)
+function needsSiteCheck(lead: Lead, staleBefore: Date): boolean {
+  if (!lead.audited_at || new Date(lead.audited_at) < staleBefore) return true
+  const raw = lead.audit as Record<string, unknown> | null
+  return !lead.website && !lead.google_place_id && !raw?.website_status
+}
+
+// Leads in the source stage that need a site check
+export function useLeadsToCheck(enabled: boolean) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'to-check'],
+    enabled,
+    queryFn: async () => {
+      const settings = await fetchSettings(supabase)
+      const { data: stage, error: stageError } = await supabase
+        .from('stages')
+        .select('*')
+        .ilike('name', settings.source_stage_name)
+        .limit(1)
+        .maybeSingle()
+      if (stageError) throw stageError
+      if (!stage) throw new Error(`No pipeline stage named "${settings.source_stage_name}"`)
+
+      const staleBefore = new Date(Date.now() - settings.audit_max_age_days * 86_400_000)
+      const leads: Lead[] = []
+      const pageSize = 1000
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from('leads')
+          .select('*')
+          .eq('stage_id', stage.id)
+          .order('position_index', { ascending: true })
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        leads.push(...(data || []).filter((lead) => needsSiteCheck(lead, staleBefore)))
+        if (!data || data.length < pageSize) break
+      }
+
+      return { stage, leads, settings }
     },
   })
 }

@@ -134,7 +134,8 @@ Each week's build feeds that same week's outreach, so the system is tested on re
 - [x] Security: team-only data access, guarded server routes
 - [x] Week 1 build: Places API pull ("Find leads"), scoring rules, "Today's calls" list with briefs and outcome logging
 - [ ] Week 1 outreach: call the top 15 by hand. **Start getobatek.com warm-up now**, so Week 3 can send
-- [ ] Week 2: website audit, call-brief generator, 3 calls a day
+- [x] Week 2 build: website audit ("Check sites"), review scan, call briefs with site findings
+- [ ] Week 2 outreach: 3 calls a day
 - [ ] Week 3: Instantly sequences with an approval gate, about 20 emails a day
 - [ ] Week 4: hiring-signal feed, Jo case study, audit PDF offer, meetings-per-100 metric
 - [ ] Then: learning loop + auto mode (after 2–3 weeks of approved sends), generic webhook adapter, first enterprise CRM adapter, enterprise features per deal

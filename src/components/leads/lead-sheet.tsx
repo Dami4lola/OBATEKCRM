@@ -65,6 +65,7 @@ import {
 } from '@/lib/validations/lead'
 import { LeadOutreachFields } from './lead-outreach-fields'
 import { externalUrl } from '@/lib/utils'
+import { LeadSiteCheck } from './lead-site-check'
 import { ComposeEmailDialog } from '@/components/email/compose-email-dialog'
 import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
 import { useLeadMeetings } from '@/lib/queries/meetings'
@@ -303,6 +304,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   </div>
                 )}
               </div>
+
+              <LeadSiteCheck key={lead.id} lead={lead} />
 
               {/* Notes */}
               {lead.notes && (

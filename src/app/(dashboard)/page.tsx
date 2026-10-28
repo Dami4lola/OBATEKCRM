@@ -2,6 +2,8 @@ import { PipelineBoard } from '@/components/pipeline/pipeline-board'
 import { RunOutreachProvider } from '@/components/outreach/run-outreach-provider'
 import { RunOutreachButton } from '@/components/outreach/run-outreach-button'
 import { FindLeadsDialog } from '@/components/outreach/find-leads-dialog'
+import { CheckSitesDialog } from '@/components/outreach/check-sites-dialog'
+import { CleanupLeadsDialog } from '@/components/outreach/cleanup-leads-dialog'
 import { TodaysCallsDialog } from '@/components/outreach/todays-calls-dialog'
 
 export default function DashboardPage() {
@@ -17,6 +19,8 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <FindLeadsDialog />
+            <CheckSitesDialog />
+            <CleanupLeadsDialog />
             <TodaysCallsDialog />
             <RunOutreachButton />
           </div>
