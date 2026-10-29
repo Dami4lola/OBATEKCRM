@@ -261,6 +261,7 @@ US leads are covered by the same footer (CAN-SPAM) and honest subject lines.
   - Each has 3 steps with `{{first_name}}` (owner, else contact, else "there"), `{{company}}`, `{{opener}}`, `{{subject}}`, `{{sender_name}}` and `{{sender_first_name}}`. Emails 2–3 reuse the subject as `re: …`.
   - The rendered text for all 3 steps is stored in `outreach_emails.steps`, with `opener` and `template_key` alongside. Claude's untouched version goes in `draft_steps`; on approval, `author` becomes `claude` if unchanged, `claude_edited` if edited, `human` if Claude's draft was rejected or never made.
   - Email 1's offer is the **free ops audit** (Build Plan, inbound layer).
+  - **`car_dealer`** (`012_car_dealer_template.sql`): test drives buyers can book themselves, enquiry follow-up, and an AI receptionist for when the team is busy or the lot is closed. The audit asks how {{company}} handles calls and buyer enquiries. Hand-typed verticals are matched loosely ("Car Dealer" → `car_dealer`), and the migration moves existing "used car dealer"-style leads to `car_dealer`.
 - **Copy rules** (`src/lib/outreach/prompts/copy-system.md`):
   - Opener: one or two sentences, one specific observation from the audit or reviews, nothing invented
   - Email 1 in total: under 90 words, plain text, no links except the unsubscribe footer, one question as the CTA

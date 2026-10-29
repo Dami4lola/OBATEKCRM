@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
   requestPrepare,
@@ -17,6 +18,7 @@ import {
   type RunEmail,
 } from '@/lib/queries/write'
 import { useOutreachSettings } from '@/lib/queries/outreach'
+import { useUpdateLead } from '@/lib/queries/leads'
 import { auditFindings, HOOK_LABELS, parseAudit, primaryHook } from '@/lib/outreach/audit-findings'
 import { parseSteps, renderSteps, templateFor, templateVars, wordCount } from '@/lib/outreach/templates'
 import type { OutreachSettings } from '@/lib/outreach/settings'
@@ -26,6 +28,10 @@ import { SendPanel } from './send-panel'
 
 const CONCURRENCY = 3
 const EMAIL_1_MAX_WORDS = 90
+
+function templateLabel(key: string) {
+  return key === 'default' ? 'Default (trades)' : key.replace(/_/g, ' ')
+}
 
 interface EmailCardProps {
   item: RunEmail
@@ -48,8 +54,11 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   const [remember, setRemember] = useState(false)
   const [onlyVertical, setOnlyVertical] = useState(false)
   const review = useReviewEmail()
+  const updateLead = useUpdateLead()
+  const queryClient = useQueryClient()
 
   const template = templateFor(settings.email_templates, lead.vertical)
+  const templateKeys = Object.keys(settings.email_templates)
   const rendered = renderSteps(
     template.steps,
     templateVars(lead, { opener, subject, senderName: settings.sender_name })
@@ -76,6 +85,19 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
       subject,
       opener,
     })
+  }
+
+  // The template follows the lead's vertical, so switching it re-labels the
+  // lead too; Claude's next redraft then writes for that vertical
+  const handleTemplate = async (key: string) => {
+    if (key === template.key) return
+    try {
+      await updateLead.mutateAsync({ id: lead.id, updates: { vertical: key === 'default' ? null : key } })
+      setCustomSteps(null)
+      await queryClient.invalidateQueries({ queryKey: ['outreach', 'run-emails'] })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to change the template')
+    }
   }
 
   const handleReview = async (action: 'approve' | 'skip' | 'reopen') => {
@@ -135,6 +157,23 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
         </div>
       ) : (
         <>
+          {templateKeys.length > 1 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              Template
+              <Select value={template.key} onValueChange={handleTemplate} disabled={updateLead.isPending || drafting}>
+                <SelectTrigger className="h-7 w-auto gap-1 text-xs capitalize">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {templateKeys.map((key) => (
+                    <SelectItem key={key} value={key} className="text-xs capitalize">
+                      {templateLabel(key)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid gap-2">
             <Input
               value={subject}

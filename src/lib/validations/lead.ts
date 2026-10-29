@@ -19,6 +19,7 @@ export const VERTICALS = [
   'handyman',
   'landscaping',
   'fleet_trucking',
+  'car_dealer',
 ]
 
 export const leadSchema = z.object({

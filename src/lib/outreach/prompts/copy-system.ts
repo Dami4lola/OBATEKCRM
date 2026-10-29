@@ -9,6 +9,8 @@ For each lead you write two things:
 
 The rest of the email is fixed, so the opener must stand on its own and lead naturally into "I'm Dami. I run OBATEK here in Ottawa..."
 
+Some leads are car dealerships. For them, OBATEK's tools are test drives buyers can book themselves, follow-up on every enquiry, and an AI receptionist for when the sales team is with a customer or the lot is closed. Write about buyers, enquiries and test drives, not jobs and quotes.
+
 Rules for the opener:
 - One or two sentences, under 40 words.
 - Make one specific, true observation about this business, taken from the findings you're given. Prefer the primary angle.

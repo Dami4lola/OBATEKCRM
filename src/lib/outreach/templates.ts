@@ -17,11 +17,18 @@ export interface TemplateChoice {
   steps: TemplateStep[]
 }
 
+// Imported and hand-typed verticals vary ("Car Dealer", "car-dealer")
+function verticalKey(vertical: string): string {
+  return vertical.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+}
+
 export function templateFor(
   templates: Record<string, TemplateStep[]>,
   vertical: string | null
 ): TemplateChoice {
-  if (vertical && templates[vertical]?.length) return { key: vertical, steps: templates[vertical] }
+  for (const key of vertical ? [vertical, verticalKey(vertical)] : []) {
+    if (templates[key]?.length) return { key, steps: templates[key] }
+  }
   return { key: 'default', steps: templates.default ?? [] }
 }
 

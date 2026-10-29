@@ -45,7 +45,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql and 010_send.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql and 012_car_dealer_template.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -71,7 +71,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   audit_daily_cap: 800,
   generic_email_keep_score: 7,
   small_business_max_staff: 50,
-  // Mirrors 009_write_step.sql; edit there (or in the settings table)
+  // Mirrors 009_write_step.sql and 012_car_dealer_template.sql; edit there (or in the settings table)
   email_templates: {
     default: [
       {
@@ -90,6 +90,23 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
         body: 'Hi {{first_name}},\n\nI\'ll leave it here. If it\'s ever useful, reply "audit" and I\'ll put it together for {{company}}.\n\n{{sender_first_name}}',
       },
     ],
+    car_dealer: [
+      {
+        step: 1,
+        subject: '{{subject}}',
+        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK here in Ottawa. We help dealerships let buyers book test drives online, follow up on every enquiry, and answer calls with an AI receptionist when the team is busy or the lot is closed.\n\nWould a free one-page audit of how {{company}} handles calls and buyer enquiries be useful?\n\n{{sender_name}}",
+      },
+      {
+        step: 2,
+        subject: 're: {{subject}}',
+        body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If a missed call or a slow reply to a test-drive request ever cost {{company}} a sale, the free audit would show where. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
+      },
+      {
+        step: 3,
+        subject: 're: {{subject}}',
+        body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
+      },
+    ],
   },
   sender_name: 'Dami Ayoade',
   copy_model: 'claude-opus-5-5',
@@ -104,6 +121,12 @@ export function parseOutreachSettings(rows: OutreachSetting[]): OutreachSettings
     if (row.key in DEFAULT_OUTREACH_SETTINGS && row.value !== null) {
       settings[row.key] = row.value
     }
+  }
+  // Templates merge by vertical: a saved set doesn't hide templates added
+  // in code later (car_dealer before 012 is run)
+  const saved = settings.email_templates
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+    settings.email_templates = { ...DEFAULT_OUTREACH_SETTINGS.email_templates, ...saved }
   }
   return settings as unknown as OutreachSettings
 }

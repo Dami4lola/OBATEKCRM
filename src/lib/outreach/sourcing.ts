@@ -18,6 +18,8 @@ const PLACES_FIELD_MASK = [
   'places.websiteUri',
   'places.rating',
   'places.userRatingCount',
+  'places.primaryType',
+  'places.types',
   'nextPageToken',
 ].join(',')
 
@@ -37,6 +39,8 @@ export interface Place {
   websiteUri?: string
   rating?: number
   userRatingCount?: number
+  primaryType?: string
+  types?: string[]
 }
 
 // What /api/outreach/source returns
@@ -170,6 +174,15 @@ export type CandidateLead = Omit<LeadInsert, 'stage_id' | 'position_index'> & {
   google_place_id: string
 }
 
+// Google knows a car dealer when it sees one, whatever vertical the search
+// was run under ("used car dealer" searched as handyman)
+export function verticalForPlace(place: Pick<Place, 'primaryType' | 'types'>, searched: string): string {
+  if (place.primaryType === 'car_dealer' || (!place.primaryType && place.types?.includes('car_dealer'))) {
+    return 'car_dealer'
+  }
+  return searched
+}
+
 export function placeToCandidate(place: Place, vertical: string, now: Date): CandidateLead {
   const name = place.displayName?.text?.trim() || 'Unknown business'
   const host = websiteHost(place.websiteUri)
@@ -193,7 +206,7 @@ export function placeToCandidate(place: Place, vertical: string, now: Date): Can
       addressPart(place, 'sublocality'),
     region: addressPart(place, 'administrative_area_level_1', true),
     country: country && /^[A-Z]{2}$/i.test(country) ? country.toUpperCase() : null,
-    vertical,
+    vertical: verticalForPlace(place, vertical),
     google_rating: place.rating ?? null,
     google_review_count: place.userRatingCount ?? null,
     lead_source: 'places',
