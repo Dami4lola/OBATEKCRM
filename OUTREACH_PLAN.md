@@ -329,21 +329,31 @@ Goal from the Build Plan: 3 calls a day plus email in under 30 minutes.
   - Then stores `instantly_campaign_id` / `instantly_lead_id`, sets `status='sent'` (handed to Instantly), logs an `email` activity, and moves the lead to Contacted with `move_lead`.
   - Errors: `status='failed'` with `last_error`. Account-wide problems (bad key, no plan, rate limit) stop the batch and leave emails approved.
   - The run is marked `completed` with a summary when nothing is left to send.
-- **Polling, not webhooks** (the CRM runs locally). It runs when the pop-up opens and on each scheduler tick, for sent emails with `stats_synced_at` older than 15 minutes:
-  - Update the stats.
-  - Log new events as `email` activities, with `meta.external_id` used for dedupe.
-  - Unsubscribe or hard bounce → add to `suppression_list`.
-  - `interested` → toast + badge. You move the lead.
+- **Polling, not webhooks** (the CRM runs locally; `stats.ts`, `stats-sync.ts`, built). It runs when the pop-up opens (`/api/outreach/stats/sync`) and on each scheduler tick.
+  - **What's polled:** sent emails from the last 60 days with `stats_synced_at` older than 15 minutes.
+  - **How:** `POST /api/v2/leads/list` with our `instantly_lead_id`s, 100 at a time.
+  - **Stats stored:** opens (`open_count`, first `opened_at`), `replied_at`, `bounced_at` (status −1) and `unsubscribed_at` (status −2).
+  - **Reply label:** Instantly's `lt_interest_status` when it's set. Otherwise the latest reply (`GET /api/v2/emails?lead=…&email_type=received`) is classified by `reply_model` (`claude-haiku-5-5`), up to 10 a sync. The reply goes in as quoted data, and only one of six labels can come back. Auto-replies are labelled `out_of_office` without calling Claude.
+  - **Timeline:** first open, reply, bounce and unsubscribe are logged as `email` activities, with `meta.external_id = outreach:<email id>:<event>` for dedupe.
+  - **Do-not-contact:** an unsubscribe (Instantly status, or a reply labelled unsubscribe) or a hard bounce adds the address to `suppression_list`.
+  - **Interested replies:** a toast, a "Recent replies" list in the pop-up, and a green stats line on the sent card. You move the lead yourself.
+  - **API key scopes:** `leads:create`, `leads:read` and `emails:read`.
 - **Safety:**
   - `sending_paused` is the kill switch.
   - `daily_send_cap` starts at 20 and rises about 5 a week while bounces stay under 2%.
-  - Bounces over 5% in 24h auto-pause sending and show a banner.
+  - **Auto-pause:** over 5% bounces among the last 7 days' sends pauses sending (after at least 20 sends; at 20 a day, one bounce in 24h would already be 5%). `sending_paused_reason` is shown in the send panel.
 - Check Instantly's current API (v2) docs before implementing, and keep all of it inside this file.
 
-### Scheduler (local)
-- `scripts/outreach-scheduler.mjs`, run with `npm run outreach:scheduler`.
-- Every 5 minutes it calls `POST localhost:3000/api/outreach/cron/tick` with `Authorization: Bearer $CRON_SECRET`. The tick starts due runs and polls Instantly.
-- The laptop must be awake; a run that comes due while it's asleep fires on wake.
+### Scheduler (local, built)
+- `scripts/outreach-scheduler.mjs`, run with `npm run outreach:scheduler` in a second terminal next to `npm run dev`. It reads `.env.local` and needs `CRON_SECRET`.
+- Every 5 minutes it calls `POST localhost:3000/api/outreach/cron/tick` with `Authorization: Bearer $CRON_SECRET`. Set `OUTREACH_APP_URL` to change the address. The middleware lets this path through without a session, and the route checks the secret itself.
+- **Each tick:**
+  1. **Start due runs** (`scheduler.ts`), up to 2 a tick. The claim is atomic, so a run can't start twice. A run re-gathers the New stage with the same `gather.ts` as the pop-up, skips leads unticked when it was scheduled and leads below the score threshold, and records blocked leads.
+  2. **Write drafts:** up to `cron_drafts_per_tick` (5) for scheduler-started runs, with the same `prepare-email.ts` as the Write step. The daily draft cap still applies.
+  3. **Poll stats** from Instantly.
+- Runs then wait in **Ready for review**; sending stays manual until auto mode (stage 9).
+- The tick uses the service-role client (`src/lib/supabase/admin.ts`, needs `SUPABASE_SERVICE_ROLE_KEY`).
+- The laptop must be awake; a run that comes due while it's asleep fires on wake, because the scheduler ticks once at start.
 - **Later:** Supabase `pg_cron` + `pg_net` call the same route.
 
 ---
@@ -398,29 +408,36 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   templates.ts         ✅ # fill the 3-email template, author tracking (browser-safe)
   run-audit.ts         ✅ # full site check for one lead, shared by audit + prepare
   examples.ts          # winner selection + stats
-  instantly-client.ts  ✅ # create lead (stats polling in stage 7)
+  instantly-client.ts  ✅ # create lead, list lead stats, latest reply
   sending.ts           ✅ # custom variables, campaign choice
+  gather.ts            ✅ # source-stage leads + compliance + score (pop-up and scheduler)
+  prepare-email.ts     ✅ # one draft: audit refresh, Claude, template (Write step and scheduler)
+  scheduler.ts         ✅ # start due runs, write pending drafts
+  stats.ts             ✅ # what one Instantly poll changes (pure)
+  stats-sync.ts        ✅ # poll, label replies, log events, suppress, auto-pause
+  reply-classifier.ts  ✅ # Haiku labels a reply (server only)
   prompts/
     copy-system.md
     reply-classifier.md
   adapters/
     obatek-crm.ts      ✅ # pushLeads / fetchExistingContacts / findStageByName (the only DB access; updateStatus comes with stage 6)
 src/lib/api/guards.ts        ✅    # requireTeamMember(), hasValidCronSecret()
-src/lib/supabase/admin.ts         # service-role client (scheduler only, stage 6)
+src/lib/supabase/admin.ts    ✅    # service-role client (cron route only)
 src/lib/queries/outreach.ts  ✅    # React Query hooks
 src/lib/queries/calls.ts     ✅
 src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
   find-leads-dialog.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
-  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  outreach-stats.tsx
+  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  outreach-stats.tsx
 src/app/api/outreach/
   source/route.ts          ✅ # Places search + dedupe + insert
   audit/route.ts           ✅ # site check (+ optional reviews), one lead
   prepare/route.ts         ✅ # audit refresh + Claude subject/opener, one lead
   send/route.ts            ✅ # push one approved email, log activity, move lead
-  cron/tick/route.ts          # due runs + stats polling (CRON_SECRET)
-scripts/outreach-scheduler.mjs
+  cron/tick/route.ts        ✅ # due runs + drafts + stats polling (CRON_SECRET)
+  stats/sync/route.ts       ✅ # stats polling when the pop-up opens
+scripts/outreach-scheduler.mjs ✅
 ```
 
 The current `queries/outreach.ts` uses the browser client directly for gather and run creation. That's fine for CRM UI; engine work that runs on the server (source, prepare, send, tick) goes through `adapters/obatek-crm.ts`.
@@ -443,7 +460,7 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 2 | 4 ✅ | `005_audit.sql`; `audit.ts` (incl. email and owner discovery, SSRF-safe fetch) feeding `signals`; reviews signal; Check sites dialog; site check on the lead sheet; findings in call briefs | 50 real sites audited; 3 calls a day |
 | 3 | 5 ✅ | `009_write_step.sql`; Write step in the pop-up (Start run → drafts, or Review on an active run); Draft all with Claude; edit opener or full emails; approve/skip/undo | 20 drafts approved in the pop-up |
 | 3 | 6 ✅ | `010_send.sql`; Instantly send + move to Contacted | A test run to your own inbox shows the lead in the Instantly campaign and moves it to Contacted |
-| 3 | 7 | Scheduler + Instantly stats polling (opens, replies, bounces, unsubscribes → suppression) | A scheduled run fires on time; opens/replies show in the CRM; then about 20 real emails a day |
+| 3 | 7 ✅ | `013_scheduler_stats.sql`; scheduler + Instantly stats polling (opens, replies, bounces, unsubscribes → suppression) | A scheduled run fires on time; opens/replies show in the CRM; then about 20 real emails a day |
 | 4 | 8 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
 | later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |
@@ -462,7 +479,7 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 | S2 ✅ | **SSRF from the site audit.** Lead `website` values come from CSVs and Places, and the server fetches them | Only `http`/`https` on ports 80/443. Resolve DNS and reject loopback, private, link-local and metadata addresses (`127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fc00::/7`), checking again after every redirect. Max 3 redirects, 10s timeout, 2 MB body cap. Never send cookies or auth headers. Done in `safe-fetch.ts`: the IP check runs inside the connection's DNS lookup, so a rebinding answer can't slip past it | 4 |
 | S3 | **Prompt injection from scraped pages and replies.** Site text and reply bodies reach Claude | Pass scraped text as quoted data in its own block, stripped of HTML and truncated. The system prompt says to never follow instructions in it. Validate the output: JSON shape, length limits, no URLs or email addresses in the opener/subject. In auto mode, anything that fails validation drops to manual review instead of sending | 5, 6, 8 |
 | S4 ✅ | **Cron route abuse.** `/api/outreach/cron/tick` starts runs and sends email | `hasValidCronSecret()` in `src/lib/api/guards.ts`: `Authorization: Bearer $CRON_SECRET`, compared with `crypto.timingSafeEqual`. Fails when `CRON_SECRET` is unset. Return 401 with no detail | helper done; route in 6 |
-| S5 | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `INSTANTLY_API_KEY` and `GOOGLE_PLACES_API_KEY` | 3+ |
+| S5 ✅ | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `INSTANTLY_API_KEY` and `GOOGLE_PLACES_API_KEY` | 3+ |
 | S6 ✅ | **Server routes acting for any caller.** `source`, `prepare` and `send` cost money and send email | Each route calls `requireTeamMember()` first (session + `is_team_member()`), and uses that user's client so RLS still applies. Validate the body with zod. Re-check compliance and `sending_paused` server-side on every send; never trust the client's list | 3–6 |
 | S7 ✅ | **Cost runaway** (Places, PageSpeed, Claude) | Sourcing: `places_max_results` per search and `places_daily_lead_cap` new leads per day, checked server-side. Prepare: one lead per call (stage 5) | 3 done; 5 |
 | S8 ✅ | **Rendering untrusted text.** Scraped names, reviews and Claude output appear in the CRM | Render as text through React. No `dangerouslySetInnerHTML`. Links go through `externalUrl()` in `src/lib/utils.ts` (http/https only) | 3+ |

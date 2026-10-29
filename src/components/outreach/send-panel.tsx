@@ -99,10 +99,18 @@ export function SendPanel({ runId, items, settings }: SendPanelProps) {
         <div className="flex gap-2 text-sm text-amber-800 dark:text-amber-300">
           <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div>
-            Sending is paused (warm-up). Approved emails wait here. When
-            getobatek.com has finished warming up, turn sending on in the Supabase SQL editor:
+            {settings.sending_paused_reason ? (
+              <>{settings.sending_paused_reason} Approved emails wait here. </>
+            ) : (
+              <>
+                Sending is paused (warm-up). Approved emails wait here. When getobatek.com has
+                finished warming up,{' '}
+              </>
+            )}
+            turn sending on in the Supabase SQL editor:
             <code className="mt-1 block rounded bg-muted px-2 py-1 text-xs">
               UPDATE outreach_settings SET value = &apos;false&apos;::jsonb WHERE key = &apos;sending_paused&apos;;
+              UPDATE outreach_settings SET value = &apos;null&apos;::jsonb WHERE key = &apos;sending_paused_reason&apos;;
             </code>
           </div>
         </div>

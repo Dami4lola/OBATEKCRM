@@ -6,22 +6,15 @@ import {
   parseOutreachSettings,
   type OutreachSettings,
 } from '@/lib/outreach/settings'
-import {
-  blockedReason,
-  checkLeads,
-  type GatherWarning,
-} from '@/lib/outreach/compliance'
-import { scoreLead, type LeadScore } from '@/lib/outreach/scoring'
+import { gatherLeads, runEmailRows, type GatherRow } from '@/lib/outreach/gather'
 import type {
   Lead,
-  OutreachEmailInsert,
   OutreachMode,
   OutreachRun,
   OutreachRunStatus,
   Stage,
 } from '@/types/database'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
-import { fetchLastSentAt, fetchSuppressions } from '@/lib/outreach/adapters/obatek-crm'
 import type { AuditLeadResult } from '@/lib/outreach/audit-findings'
 
 export const ACTIVE_RUN_STATUSES: OutreachRunStatus[] = [
@@ -31,14 +24,7 @@ export const ACTIVE_RUN_STATUSES: OutreachRunStatus[] = [
   'sending',
 ]
 
-export interface GatherRow {
-  lead: Lead
-  warnings: GatherWarning[]
-  blocked: boolean
-  score: LeadScore
-  // Starts unticked; can still be ticked by hand
-  belowThreshold: boolean
-}
+export type { GatherRow }
 
 export interface GatherResult {
   stage: Stage
@@ -72,63 +58,7 @@ export function useOutreachGather(enabled: boolean) {
     enabled,
     queryFn: async (): Promise<GatherResult> => {
       const settings = await fetchSettings(supabase)
-
-      const { data: stage, error: stageError } = await supabase
-        .from('stages')
-        .select('*')
-        .ilike('name', settings.source_stage_name)
-        .limit(1)
-        .maybeSingle()
-
-      if (stageError) throw stageError
-      if (!stage) {
-        throw new Error(
-          `No pipeline stage named "${settings.source_stage_name}". Rename a stage or change source_stage_name in outreach settings.`
-        )
-      }
-
-      const { data: leads, error: leadsError } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('stage_id', stage.id)
-        .order('position_index', { ascending: true })
-
-      if (leadsError) throw leadsError
-
-      const [suppressions, lastSentAt] = await Promise.all([
-        fetchSuppressions(supabase),
-        fetchLastSentAt(supabase, (leads || []).map((l) => l.id)),
-      ])
-
-      const warnings = checkLeads(leads || [], {
-        suppressedEmails: suppressions.emails,
-        suppressedDomains: suppressions.domains,
-        lastSentAt,
-        cooldownDays: settings.resequence_cooldown_days,
-        now: new Date(),
-      })
-
-      const rows = (leads || []).map((lead) => {
-        const leadWarnings = warnings.get(lead.id) || []
-        const score = scoreLead(lead, settings.score_weights, settings.target_verticals)
-        // Only judge leads that have been checked for pain signals
-        const belowThreshold = score.painChecked && score.score < settings.score_threshold
-        if (belowThreshold) {
-          leadWarnings.push({
-            code: 'low_score',
-            message: `Score ${score.score}, below ${settings.score_threshold}`,
-            blocking: false,
-          })
-        }
-        return {
-          lead,
-          warnings: leadWarnings,
-          blocked: leadWarnings.some((w) => w.blocking),
-          score,
-          belowThreshold,
-        }
-      })
-
+      const { stage, rows } = await gatherLeads(supabase, settings)
       return { stage, rows, settings }
     },
   })
@@ -211,14 +141,7 @@ export function useCreateOutreachRun() {
 
       if (runError) throw runError
 
-      const emails: OutreachEmailInsert[] = rows
-        .filter((row) => row.blocked || selectedIds.has(row.lead.id))
-        .map((row) => ({
-          lead_id: row.lead.id,
-          run_id: run.id,
-          status: row.blocked ? 'blocked' : 'draft',
-          blocked_reason: row.blocked ? blockedReason(row.warnings) : null,
-        }))
+      const emails = runEmailRows(run.id, rows, (row) => selectedIds.has(row.lead.id))
 
       if (emails.length > 0) {
         const { error: emailsError } = await supabase

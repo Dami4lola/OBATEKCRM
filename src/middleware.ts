@@ -39,8 +39,9 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // /reset-password is not public: the reset email's link signs the user in first
-  const publicPaths = ['/login', '/signup', '/forgot-password', '/api/auth/callback']
+  // /reset-password is not public: the reset email's link signs the user in first.
+  // The scheduler's cron route has no session; it checks CRON_SECRET itself.
+  const publicPaths = ['/login', '/signup', '/forgot-password', '/api/auth/callback', '/api/outreach/cron/']
   const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   // Redirect to login if not authenticated and trying to access protected route

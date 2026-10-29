@@ -5,9 +5,13 @@ import type {
   Database,
   Lead,
   LeadUpdate,
+  Json,
   OutreachEmail,
+  OutreachEmailInsert,
   OutreachEmailUpdate,
+  OutreachRun,
   Stage,
+  SuppressionReason,
 } from '@/types/database'
 import { parseOutreachSettings, type OutreachSettings } from '../settings'
 import { existingContactsFrom, type CandidateLead, type ExistingContacts } from '../sourcing'
@@ -300,3 +304,161 @@ export async function moveLeadToStage(crm: Crm, leadId: string, stageId: string)
   })
   if (error) throw error
 }
+
+export async function fetchLeadsInStage(crm: Crm, stageId: string): Promise<Lead[]> {
+  const { data, error } = await crm
+    .from('leads')
+    .select('*')
+    .eq('stage_id', stageId)
+    .order('position_index', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// Scheduled runs that are due, moved to preparing. The status check in the
+// update means two ticks can't both start the same run.
+export async function claimDueRuns(crm: Crm, now: Date, limit: number): Promise<OutreachRun[]> {
+  const { data: due, error } = await crm
+    .from('outreach_runs')
+    .select('*')
+    .eq('status', 'scheduled')
+    .lte('scheduled_for', now.toISOString())
+    .order('scheduled_for', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+
+  const claimed: OutreachRun[] = []
+  for (const run of due || []) {
+    const summary = run.summary && typeof run.summary === 'object' && !Array.isArray(run.summary) ? run.summary : {}
+    const { data, error: claimError } = await crm
+      .from('outreach_runs')
+      .update({
+        status: 'preparing',
+        started_at: now.toISOString(),
+        // Drafts for this run are written by the scheduler, not the pop-up
+        summary: { ...summary, auto_prepare: true },
+      })
+      .eq('id', run.id)
+      .eq('status', 'scheduled')
+      .select()
+      .maybeSingle()
+    if (claimError) throw claimError
+    if (data) claimed.push(data)
+  }
+  return claimed
+}
+
+export async function insertRunEmails(crm: Crm, emails: OutreachEmailInsert[]): Promise<void> {
+  if (emails.length === 0) return
+  const { error } = await crm.from('outreach_emails').insert(emails)
+  if (error) throw error
+}
+
+export async function finishRun(
+  crm: Crm,
+  runId: string,
+  status: 'completed' | 'failed',
+  summary: Record<string, Json>
+): Promise<void> {
+  const { error } = await crm
+    .from('outreach_runs')
+    .update({ status, finished_at: new Date().toISOString(), summary })
+    .eq('id', runId)
+  if (error) throw error
+}
+
+// Drafts still to write in runs the scheduler started
+export async function fetchUndraftedEmailIds(crm: Crm, limit: number): Promise<string[]> {
+  const { data: runs, error } = await crm
+    .from('outreach_runs')
+    .select('id')
+    .in('status', ['preparing', 'awaiting_review'])
+    .eq('summary->>auto_prepare', 'true')
+  if (error) throw error
+  if (!runs || runs.length === 0) return []
+
+  const { data, error: emailsError } = await crm
+    .from('outreach_emails')
+    .select('id')
+    .in('run_id', runs.map((r) => r.id))
+    .eq('status', 'draft')
+    .is('drafted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  if (emailsError) throw emailsError
+  return (data || []).map((row) => row.id)
+}
+
+export type EmailToSync = Pick<
+  OutreachEmail,
+  | 'id'
+  | 'lead_id'
+  | 'run_id'
+  | 'instantly_lead_id'
+  | 'open_count'
+  | 'opened_at'
+  | 'replied_at'
+  | 'reply_class'
+  | 'bounced_at'
+  | 'unsubscribed_at'
+> & { lead: Pick<Lead, 'email' | 'company_name' | 'contact_name'> | null }
+
+// Sent emails whose stats are older than staleBefore, oldest first
+export async function fetchEmailsToSync(
+  crm: Crm,
+  staleBefore: Date,
+  sentSince: Date,
+  limit: number
+): Promise<EmailToSync[]> {
+  const { data, error } = await crm
+    .from('outreach_emails')
+    .select(
+      'id, lead_id, run_id, instantly_lead_id, open_count, opened_at, replied_at, reply_class, bounced_at, unsubscribed_at, leads(email, company_name, contact_name)'
+    )
+    .eq('status', 'sent')
+    .not('instantly_lead_id', 'is', null)
+    .gte('sent_at', sentSince.toISOString())
+    .or(`stats_synced_at.is.null,stats_synced_at.lt.${staleBefore.toISOString()}`)
+    .order('stats_synced_at', { ascending: true, nullsFirst: true })
+    .limit(limit)
+  if (error) throw error
+  return (data || []).map(({ leads, ...email }) => ({
+    ...email,
+    lead: leads as EmailToSync['lead'],
+  }))
+}
+
+// Do-not-contact from now on; already listed is fine
+export async function addSuppression(crm: Crm, email: string, reason: SuppressionReason): Promise<void> {
+  const { error } = await crm.from('suppression_list').insert({ email: email.trim().toLowerCase(), reason })
+  if (error && error.code !== '23505') throw error
+}
+
+export async function countSendsAndBounces(crm: Crm, since: Date): Promise<{ sent: number; bounced: number }> {
+  const [sent, bounced] = await Promise.all([
+    crm
+      .from('outreach_emails')
+      .select('id', { count: 'exact', head: true })
+      .gte('sent_at', since.toISOString()),
+    crm
+      .from('outreach_emails')
+      .select('id', { count: 'exact', head: true })
+      .gte('sent_at', since.toISOString())
+      .not('bounced_at', 'is', null),
+  ])
+  if (sent.error) throw sent.error
+  if (bounced.error) throw bounced.error
+  return { sent: sent.count ?? 0, bounced: bounced.count ?? 0 }
+}
+
+// The kill switch, flipped automatically; the reason shows in the send panel
+export async function pauseSending(crm: Crm, reason: string): Promise<void> {
+  const updatedAt = new Date().toISOString()
+  const [paused, why] = await Promise.all([
+    crm.from('outreach_settings').update({ value: true, updated_at: updatedAt }).eq('key', 'sending_paused'),
+    crm.from('outreach_settings').update({ value: reason, updated_at: updatedAt }).eq('key', 'sending_paused_reason'),
+  ])
+  if (paused.error) throw paused.error
+  if (why.error) throw why.error
+}
+

@@ -30,6 +30,10 @@ export interface OutreachSettings {
   copy_model: string
   draft_daily_cap: number
   instantly_body_format: 'html' | 'text'
+  cron_drafts_per_tick: number
+  reply_model: string
+  // Set when sending was paused automatically (bounces); null otherwise
+  sending_paused_reason: string | null
 }
 
 export interface TemplateStep {
@@ -45,7 +49,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql and 012_car_dealer_template.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql and 013_scheduler_stats.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -112,6 +116,11 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   copy_model: 'claude-opus-5-5',
   draft_daily_cap: 300,
   instantly_body_format: 'html',
+  // Each draft is a Claude call of up to ~30s; a tick should finish well
+  // inside the scheduler's request timeout
+  cron_drafts_per_tick: 5,
+  reply_model: 'claude-haiku-5-5',
+  sending_paused_reason: null,
 }
 
 // Missing or unknown keys fall back to the defaults

@@ -22,12 +22,26 @@ import { useUpdateLead } from '@/lib/queries/leads'
 import { auditFindings, HOOK_LABELS, parseAudit, primaryHook } from '@/lib/outreach/audit-findings'
 import { parseSteps, renderSteps, templateFor, templateVars, wordCount } from '@/lib/outreach/templates'
 import type { OutreachSettings } from '@/lib/outreach/settings'
-import type { OutreachEmailStep } from '@/types/database'
+import { REPLY_CLASS_LABELS } from '@/lib/outreach/stats'
+import type { OutreachEmail, OutreachEmailStep } from '@/types/database'
 import { CopyRulesPanel } from './copy-rules-panel'
 import { SendPanel } from './send-panel'
 
 const CONCURRENCY = 3
 const EMAIL_1_MAX_WORDS = 90
+
+// What Instantly has reported for a sent email so far
+function sentStats(email: OutreachEmail): string {
+  const parts: string[] = []
+  if (email.bounced_at) parts.push('Bounced')
+  if (email.unsubscribed_at) parts.push('Unsubscribed')
+  if (email.replied_at) {
+    parts.push(email.reply_class ? `Replied: ${REPLY_CLASS_LABELS[email.reply_class].toLowerCase()}` : 'Replied')
+  }
+  if (email.open_count > 0) parts.push(`Opened ${email.open_count}×`)
+  if (parts.length > 0) return parts.join(' · ')
+  return email.stats_synced_at ? 'No opens yet' : 'Waiting for stats from Instantly'
+}
 
 function templateLabel(key: string) {
   return key === 'default' ? 'Default (trades)' : key.replace(/_/g, ' ')
@@ -142,6 +156,11 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
         <div className="space-y-2">
           <p className="text-sm font-medium">{saved[0]?.subject}</p>
           <p className="whitespace-pre-line text-sm text-muted-foreground">{saved[0]?.body}</p>
+          {email.status === 'sent' && (
+            <p className={`text-xs ${email.reply_class === 'interested' ? 'font-medium text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
+              {sentStats(email)}
+            </p>
+          )}
           {email.status === 'failed' && email.last_error && (
             <p className="text-xs text-destructive">{email.last_error}</p>
           )}

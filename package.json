@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "outreach:scheduler": "node --env-file=.env.local scripts/outreach-scheduler.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

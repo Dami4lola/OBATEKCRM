@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { approvedAuthor, parseSteps, type PrepareEmailResult } from '@/lib/outreach/templates'
 import type { SendEmailResult } from '@/lib/outreach/sending'
+import type { SyncResult } from '@/lib/outreach/stats-sync'
 import type { CopyFeedback, Json, Lead, OutreachEmail, OutreachEmailStep } from '@/types/database'
 
 export interface RunEmail {
@@ -185,4 +186,41 @@ export function useRemoveCopyRule() {
       queryClient.invalidateQueries({ queryKey: ['outreach', 'copy-rules'] })
     },
   })
+}
+
+export interface RecentReply {
+  email: Pick<OutreachEmail, 'id' | 'lead_id' | 'replied_at' | 'reply_class'>
+  company: string
+}
+
+const RECENT_REPLY_DAYS = 14
+
+// Replies to outreach emails in the last two weeks, newest first
+export function useRecentReplies() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'recent-replies'],
+    queryFn: async (): Promise<RecentReply[]> => {
+      const since = new Date(Date.now() - RECENT_REPLY_DAYS * 86_400_000).toISOString()
+      const { data, error } = await supabase
+        .from('outreach_emails')
+        .select('id, lead_id, replied_at, reply_class, leads(company_name, contact_name)')
+        .gte('replied_at', since)
+        .order('replied_at', { ascending: false })
+        .limit(20)
+      if (error) throw error
+      return (data || []).map(({ leads, ...email }) => {
+        const lead = leads as Pick<Lead, 'company_name' | 'contact_name'> | null
+        return { email, company: lead?.company_name || lead?.contact_name || 'A lead' }
+      })
+    },
+  })
+}
+
+export async function requestStatsSync(): Promise<SyncResult> {
+  const response = await fetch('/api/outreach/stats/sync', { method: 'POST' })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error || 'Failed to sync stats from Instantly')
+  return body as SyncResult
 }
