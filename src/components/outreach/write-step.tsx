@@ -3,17 +3,26 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Check, ChevronDown, ChevronRight, Loader2, Sparkles, Undo2, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Loader2, MessageSquare, Sparkles, Undo2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { requestPrepare, useReviewEmail, useRunEmails, type RunEmail } from '@/lib/queries/write'
+import {
+  requestPrepare,
+  useReviewEmail,
+  useRunEmails,
+  type DraftFeedback,
+  type RunEmail,
+} from '@/lib/queries/write'
 import { useOutreachSettings } from '@/lib/queries/outreach'
 import { auditFindings, HOOK_LABELS, parseAudit, primaryHook } from '@/lib/outreach/audit-findings'
 import { parseSteps, renderSteps, templateFor, templateVars, wordCount } from '@/lib/outreach/templates'
 import type { OutreachSettings } from '@/lib/outreach/settings'
 import type { OutreachEmailStep } from '@/types/database'
+import { CopyRulesPanel } from './copy-rules-panel'
+import { SendPanel } from './send-panel'
 
 const CONCURRENCY = 3
 const EMAIL_1_MAX_WORDS = 90
@@ -22,7 +31,7 @@ interface EmailCardProps {
   item: RunEmail
   settings: OutreachSettings
   drafting: boolean
-  onDraft: (emailId: string) => void
+  onDraft: (emailId: string, feedback?: DraftFeedback) => void
 }
 
 // Remounted (by key) whenever the email is redrafted or reviewed, so its
@@ -34,6 +43,10 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   const [opener, setOpener] = useState(email.opener ?? '')
   const [customSteps, setCustomSteps] = useState<OutreachEmailStep[] | null>(null)
   const [showFollowUps, setShowFollowUps] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [remember, setRemember] = useState(false)
+  const [onlyVertical, setOnlyVertical] = useState(false)
   const review = useReviewEmail()
 
   const template = templateFor(settings.email_templates, lead.vertical)
@@ -54,6 +67,17 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
     )
   }
 
+  // Redraft from what's on screen, with the feedback
+  const handleFeedback = () => {
+    onDraft(email.id, {
+      note: note.trim(),
+      remember,
+      onlyVertical: remember && onlyVertical && !!lead.vertical,
+      subject,
+      opener,
+    })
+  }
+
   const handleReview = async (action: 'approve' | 'skip' | 'reopen') => {
     try {
       await review.mutateAsync({ email, action, steps, opener })
@@ -62,7 +86,9 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
     }
   }
 
-  const reviewed = email.status === 'approved' || email.status === 'skipped'
+  const reviewed = email.status !== 'draft'
+  // Sent and blocked are final; the rest can go back to a draft
+  const canUndo = email.status === 'approved' || email.status === 'skipped' || email.status === 'failed'
 
   return (
     <div className={`space-y-3 rounded-md border p-3 ${reviewed ? 'bg-muted/30' : ''}`}>
@@ -76,6 +102,9 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
         </div>
         {email.status === 'approved' && <Badge className="bg-green-600">Approved</Badge>}
         {email.status === 'skipped' && <Badge variant="outline">Skipped</Badge>}
+        {email.status === 'sent' && <Badge className="bg-blue-600">Sent to Instantly</Badge>}
+        {email.status === 'failed' && <Badge variant="destructive">Failed</Badge>}
+        {email.status === 'blocked' && <Badge variant="destructive">Blocked</Badge>}
       </div>
 
       {(hook || findings.length > 0) && (
@@ -91,10 +120,18 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
         <div className="space-y-2">
           <p className="text-sm font-medium">{saved[0]?.subject}</p>
           <p className="whitespace-pre-line text-sm text-muted-foreground">{saved[0]?.body}</p>
-          <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleReview('reopen')} disabled={review.isPending}>
-            <Undo2 className="mr-1 h-3 w-3" />
-            Undo
-          </Button>
+          {email.status === 'failed' && email.last_error && (
+            <p className="text-xs text-destructive">{email.last_error}</p>
+          )}
+          {email.status === 'blocked' && email.blocked_reason && (
+            <p className="text-xs text-destructive">{email.blocked_reason}</p>
+          )}
+          {canUndo && (
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleReview('reopen')} disabled={review.isPending}>
+              <Undo2 className="mr-1 h-3 w-3" />
+              {email.status === 'failed' ? 'Back to draft' : 'Undo'}
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -177,6 +214,12 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
               {drafting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
               {email.drafted_at ? 'Redraft with Claude' : 'Draft with Claude'}
             </Button>
+            {email.drafted_at && (
+              <Button size="sm" variant="outline" onClick={() => setFeedbackOpen((v) => !v)} disabled={drafting}>
+                <MessageSquare className="mr-1 h-3 w-3" />
+                Feedback
+              </Button>
+            )}
             <Button size="sm" onClick={() => handleReview('approve')} disabled={!canApprove || drafting || review.isPending}>
               <Check className="mr-1 h-3 w-3" />
               Approve
@@ -186,6 +229,40 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
               Skip
             </Button>
           </div>
+
+          {feedbackOpen && (
+            <div className="space-y-2 rounded-md border border-dashed p-2">
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                maxLength={500}
+                placeholder="What should Claude change? e.g. They do have a test-drive form; open with the time lost replying to each request by email"
+                className="text-sm"
+              />
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                <label className="flex items-center gap-2">
+                  <Checkbox checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
+                  Remember for future drafts
+                </label>
+                {remember && lead.vertical && (
+                  <label className="flex items-center gap-2">
+                    <Checkbox checked={onlyVertical} onCheckedChange={(v) => setOnlyVertical(v === true)} />
+                    Only for {lead.vertical.replace(/_/g, ' ')} leads
+                  </label>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleFeedback} disabled={note.trim().length < 3 || drafting}>
+                  {drafting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
+                  Redraft with feedback
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setFeedbackOpen(false)} disabled={drafting}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -201,9 +278,11 @@ export function WriteStep({ runId }: { runId: string }) {
   const stopRef = useRef(false)
 
   const items = runEmails.data ?? []
-  const approved = items.filter((i) => i.email.status === 'approved').length
-  const skipped = items.filter((i) => i.email.status === 'skipped').length
-  const toReview = items.length - approved - skipped
+  const count = (status: string) => items.filter((i) => i.email.status === status).length
+  const approved = count('approved')
+  const skipped = count('skipped')
+  const sent = count('sent')
+  const toReview = count('draft')
   const undrafted = items.filter((i) => i.email.status === 'draft' && !i.email.drafted_at)
 
   const setDrafting = (id: string, on: boolean) =>
@@ -215,10 +294,14 @@ export function WriteStep({ runId }: { runId: string }) {
     })
 
   // Returns false when every remaining draft would fail too (limit, no key)
-  const draftOne = async (emailId: string): Promise<boolean> => {
+  const draftOne = async (emailId: string, feedback?: DraftFeedback): Promise<boolean> => {
     setDrafting(emailId, true)
     try {
-      const result = await requestPrepare(emailId)
+      const result = await requestPrepare(emailId, feedback)
+      if (feedback?.remember) {
+        toast.success('Saved as a writing rule for future drafts')
+        queryClient.invalidateQueries({ queryKey: ['outreach', 'copy-rules'] })
+      }
       if (result.problems.length) {
         toast.warning(`Claude's draft for ${result.lead.company_name || result.lead.contact_name} broke the copy rules, so the opener is blank: ${result.problems.join('; ')}`)
       }
@@ -271,7 +354,8 @@ export function WriteStep({ runId }: { runId: string }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>
-          {approved} approved · {skipped} skipped · {toReview} to review
+          {toReview} to review · {approved} approved · {skipped} skipped
+          {sent > 0 && ` · ${sent} sent`}
         </span>
         {batch ? (
           <div className="flex items-center gap-2">
@@ -292,8 +376,10 @@ export function WriteStep({ runId }: { runId: string }) {
       </div>
       <p className="text-xs text-muted-foreground">
         Claude writes the subject and opening line from each site check; the rest is
-        your template. Nothing is sent yet: approved emails go out once sending is set up.
+        your template. Approved emails go to Instantly when you send them below.
       </p>
+      <CopyRulesPanel />
+      <SendPanel runId={runId} items={items} settings={settings} />
       <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
         {items.map((item) => (
           <EmailCard

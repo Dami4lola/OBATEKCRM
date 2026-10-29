@@ -32,6 +32,8 @@ export interface SiteAudit {
   copyright_year: number | null
   has_booking: boolean
   booking_tool: string | null
+  // Links like "Book A Test Drive": a request someone has to answer; missing on older audits
+  request_paths?: string[]
   has_contact_form: boolean
   emails_found: string[]
   owner_name: string | null
@@ -53,7 +55,8 @@ export interface AuditLeadResult {
 
 export const HOOK_LABELS: Record<OutreachHook, string> = {
   no_site: 'No real website',
-  no_booking: 'No way to request a quote or book online',
+  no_booking: 'No online booking or quote request seen',
+  request_only: 'Requests go to an inbox; no instant booking',
   not_mobile: "Website doesn't work well on phones",
   slow: 'Website is slow on mobile',
   outdated: 'Website looks out of date',
@@ -84,11 +87,16 @@ export function primaryHook(audit: SiteAudit, now = new Date()): OutreachHook {
   // Unreadable homepage: don't claim problems we couldn't see
   if (audit.pages_checked.length === 0 || audit.mobile_viewport === null) return 'generic'
   if (!audit.has_booking && !audit.has_contact_form) return 'no_booking'
+  // Request links (test drive, quote) but nothing that books a time: each one
+  // waits in an inbox for a reply
+  if (!audit.booking_tool && audit.has_booking) return 'request_only'
   if (!audit.mobile_viewport) return 'not_mobile'
   if (audit.perf_score !== null && audit.perf_score < 50) return 'slow'
   if (audit.copyright_year !== null && audit.copyright_year <= now.getFullYear() - OUTDATED_YEARS) {
     return 'outdated'
   }
+  // A plain contact form comes after real site problems, so openers vary
+  if (!audit.booking_tool) return 'request_only'
   if (audit.seo_issues.length > 0) return 'seo_local'
   return 'generic'
 }
@@ -124,9 +132,13 @@ export function auditFindings(audit: SiteAudit): string[] {
   if (audit.dead_site) return ['Website is down or not found']
   if (audit.listing) findings.push('Website found on Google listing')
   if (audit.booking_tool) findings.push(`Books online with ${audit.booking_tool}`)
-  else if (audit.has_booking) findings.push('Has a quote or booking button')
+  else if (audit.request_paths?.length) {
+    findings.push(`Request forms, no live booking: ${audit.request_paths.map((p) => `"${p}"`).join(', ')}`)
+  } else if (audit.has_booking) findings.push('Has a quote or booking button, no live booking')
   else if (audit.has_contact_form) findings.push('Contact form only, no booking')
-  else if (audit.mobile_viewport !== null) findings.push('No way to request a quote online')
+  else if (audit.mobile_viewport !== null) {
+    findings.push('No booking or quote request seen (forms that load later can be missed)')
+  }
   if (audit.mobile_viewport === false) findings.push('Not set up for phones')
   if (audit.perf_score !== null) findings.push(`Mobile speed ${audit.perf_score}/100`)
   if (audit.copyright_year !== null) findings.push(`Footer year ${audit.copyright_year}`)

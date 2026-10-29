@@ -23,6 +23,7 @@ export type OutreachEmailStatus = 'blocked' | 'draft' | 'approved' | 'sent' | 'f
 export type OutreachHook =
   | 'no_site'
   | 'no_booking'
+  | 'request_only'
   | 'not_mobile'
   | 'slow'
   | 'outdated'
@@ -495,6 +496,7 @@ export interface Database {
           template_key: string | null
           draft_steps: Json | null
           drafted_at: string | null
+          last_error: string | null
           author: OutreachAuthor | null
           model: string | null
           instantly_campaign_id: string | null
@@ -525,6 +527,7 @@ export interface Database {
           template_key?: string | null
           draft_steps?: Json | null
           drafted_at?: string | null
+          last_error?: string | null
           author?: OutreachAuthor | null
           model?: string | null
           instantly_campaign_id?: string | null
@@ -555,6 +558,7 @@ export interface Database {
           template_key?: string | null
           draft_steps?: Json | null
           drafted_at?: string | null
+          last_error?: string | null
           author?: OutreachAuthor | null
           model?: string | null
           instantly_campaign_id?: string | null
@@ -641,6 +645,36 @@ export interface Database {
           reason?: string | null
           dismissed_by?: string | null
           dismissed_at?: string
+        }
+        Relationships: []
+      }
+      copy_feedback: {
+        Row: {
+          id: string
+          note: string
+          vertical: string | null
+          active: boolean
+          email_id: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          note: string
+          vertical?: string | null
+          active?: boolean
+          email_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          note?: string
+          vertical?: string | null
+          active?: boolean
+          email_id?: string | null
+          created_by?: string | null
+          created_at?: string
         }
         Relationships: []
       }
@@ -744,6 +778,8 @@ export type Suppression = Database['public']['Tables']['suppression_list']['Row'
 export type SuppressionInsert = Database['public']['Tables']['suppression_list']['Insert']
 export type OutreachSetting = Database['public']['Tables']['outreach_settings']['Row']
 export type DismissedLeadInsert = Database['public']['Tables']['dismissed_leads']['Insert']
+export type CopyFeedback = Database['public']['Tables']['copy_feedback']['Row']
+export type CopyFeedbackInsert = Database['public']['Tables']['copy_feedback']['Insert']
 
 // Shape of each entry in outreach_emails.steps
 export interface OutreachEmailStep {

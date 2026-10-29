@@ -27,6 +27,10 @@ export interface DraftInput {
   hook: OutreachHook
   offer: string
   examples: CopyExample[]
+  // Standing writing rules from the team (copy_feedback, active)
+  rules: string[]
+  // Redraft of an earlier draft with the team's feedback on it
+  revision?: { subject: string; opener: string; feedback: string }
 }
 
 export interface Draft {
@@ -39,10 +43,17 @@ export interface Draft {
 
 const CONTACT_DETAILS = /https?:\/\/|www\.|\b[\w.+-]+@[\w-]+\.[\w.]+|\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/i
 const BANNED_PHRASES = /hope (you|this)|came across|quick question|i love|amazing|!/i
+// The site check misses forms that load later, so "you have no X" is often
+// wrong and the owner knows it
+const ABSENCE_CLAIM =
+  /\bthere(?:'s|’s| is| are)\s+no\b|\bno way (?:to|for)\b|\b(?:doesn|don)(?:'|’)?t\s+have\b|\b(?:does|do) not\s+have\b|\b(?:can(?:'|’)?t|cannot|can not)\s+(?:book|request|get|schedule|find|reach)\b/i
 
 // Checks the draft against the copy rules; untrusted page text reaches the
 // model, so nothing that fails here is used (§16 S3)
-export function draftProblems(draft: { subject: string; opener: string }): string[] {
+export function draftProblems(
+  draft: { subject: string; opener: string },
+  { hook }: { hook?: OutreachHook } = {}
+): string[] {
   const problems: string[] = []
   const subject = draft.subject.trim()
   const opener = draft.opener.trim()
@@ -57,6 +68,10 @@ export function draftProblems(draft: { subject: string; opener: string }): strin
   if ((opener.match(/[.!?](\s|$)/g) ?? []).length > 2) problems.push('Opener has more than two sentences')
   if (CONTACT_DETAILS.test(opener)) problems.push('Opener has links or contact details')
   if (BANNED_PHRASES.test(opener)) problems.push('Opener uses a banned phrase')
+  // A confirmed missing website is the one absence we can state
+  if (hook !== 'no_site' && ABSENCE_CLAIM.test(opener)) {
+    problems.push('Opener claims something is missing; describe what their current process costs them instead')
+  }
   if (/^(hi|hey|hello|dear)\b/i.test(opener)) problems.push('Opener repeats the greeting')
   return problems
 }
@@ -66,7 +81,7 @@ function quoted(text: string, max = 300): string {
   return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-function leadBrief({ lead, audit, hook, offer, examples }: DraftInput): string {
+export function leadBrief({ lead, audit, hook, offer, examples, revision }: DraftInput): string {
   const findings = audit ? auditFindings(audit).filter((f) => !f.startsWith('Owner (from site')) : []
   const reviews = audit?.slow_callback_reviews ?? []
   const lines = [
@@ -99,8 +114,36 @@ function leadBrief({ lead, audit, hook, offer, examples }: DraftInput): string {
       '</examples>'
     )
   }
-  lines.push('', 'Write the subject and opener for this lead.')
+  if (revision) {
+    lines.push(
+      '',
+      '<previous_draft>',
+      `subject: ${quoted(revision.subject, 80)}`,
+      `opener: ${quoted(revision.opener, 320)}`,
+      '</previous_draft>',
+      '',
+      `<feedback_from_dami>${quoted(revision.feedback, 500)}</feedback_from_dami>`,
+      '',
+      'Rewrite the subject and opener for this lead using the feedback.'
+    )
+  } else {
+    lines.push('', 'Write the subject and opener for this lead.')
+  }
   return lines.filter((line) => line !== null).join('\n')
+}
+
+// The fixed prompt plus the team's standing rules. The cache breakpoint sits
+// on the last block, so both are cached across a batch.
+export function systemBlocks(rules: string[]): Anthropic.Beta.Messages.BetaTextBlockParam[] {
+  const blocks: Anthropic.Beta.Messages.BetaTextBlockParam[] = [{ type: 'text', text: COPY_SYSTEM_PROMPT }]
+  if (rules.length) {
+    blocks.push({
+      type: 'text',
+      text: `Writing rules from Dami's team:\n${rules.map((rule) => `- ${quoted(rule, 500)}`).join('\n')}`,
+    })
+  }
+  blocks[blocks.length - 1].cache_control = { type: 'ephemeral' }
+  return blocks
 }
 
 let client: Anthropic | null = null
@@ -121,7 +164,7 @@ async function requestDraft(input: DraftInput, feedback: string[]): Promise<{ su
     // A declined request is retried on Anthropic's recommended fallback model
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    system: [{ type: 'text', text: COPY_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    system: systemBlocks(input.rules),
     messages: [{ role: 'user', content }],
     output_config: { format: betaZodOutputFormat(DraftSchema), effort: 'medium' },
   })
@@ -139,10 +182,10 @@ async function requestDraft(input: DraftInput, feedback: string[]): Promise<{ su
 // left blank for Dami to write
 export async function draftWithClaude(input: DraftInput): Promise<Draft> {
   let attempt = await requestDraft(input, [])
-  let problems = draftProblems(attempt)
+  let problems = draftProblems(attempt, input)
   if (problems.length) {
     attempt = await requestDraft(input, problems)
-    problems = draftProblems(attempt)
+    problems = draftProblems(attempt, input)
   }
   if (problems.length) {
     return { subject: '', opener: '', model: attempt.model, problems }

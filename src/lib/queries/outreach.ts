@@ -21,6 +21,7 @@ import type {
   Stage,
 } from '@/types/database'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
+import { fetchLastSentAt, fetchSuppressions } from '@/lib/outreach/adapters/obatek-crm'
 import type { AuditLeadResult } from '@/lib/outreach/audit-findings'
 
 export const ACTIVE_RUN_STATUSES: OutreachRunStatus[] = [
@@ -47,63 +48,10 @@ export interface GatherResult {
 
 type Supabase = ReturnType<typeof createClient>
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
-}
-
 async function fetchSettings(supabase: Supabase): Promise<OutreachSettings> {
   const { data, error } = await supabase.from('outreach_settings').select('*')
   if (error) throw error
   return parseOutreachSettings(data || [])
-}
-
-// Supabase caps a select at 1000 rows, so page through the whole list
-async function fetchSuppressions(supabase: Supabase) {
-  const emails = new Set<string>()
-  const domains = new Set<string>()
-  const pageSize = 1000
-
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
-      .from('suppression_list')
-      .select('email, domain')
-      .range(from, from + pageSize - 1)
-
-    if (error) throw error
-    for (const row of data || []) {
-      if (row.email) emails.add(row.email.toLowerCase())
-      if (row.domain) domains.add(row.domain.toLowerCase())
-    }
-    if (!data || data.length < pageSize) break
-  }
-
-  return { emails, domains }
-}
-
-async function fetchLastSentAt(supabase: Supabase, leadIds: string[]) {
-  const lastSentAt = new Map<string, Date>()
-
-  // Keep each IN list short enough for the request URL
-  for (const ids of chunk(leadIds, 100)) {
-    const { data, error } = await supabase
-      .from('outreach_emails')
-      .select('lead_id, sent_at')
-      .in('lead_id', ids)
-      .not('sent_at', 'is', null)
-
-    if (error) throw error
-    for (const row of data || []) {
-      const sentAt = new Date(row.sent_at!)
-      const current = lastSentAt.get(row.lead_id)
-      if (!current || sentAt > current) lastSentAt.set(row.lead_id, sentAt)
-    }
-  }
-
-  return lastSentAt
 }
 
 export function useOutreachSettings() {

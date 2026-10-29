@@ -29,6 +29,7 @@ export interface OutreachSettings {
   sender_name: string
   copy_model: string
   draft_daily_cap: number
+  instantly_body_format: 'html' | 'text'
 }
 
 export interface TemplateStep {
@@ -44,7 +45,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql and 009_write_step.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql and 010_send.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -93,6 +94,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   sender_name: 'Dami Ayoade',
   copy_model: 'claude-opus-5-5',
   draft_daily_cap: 300,
+  instantly_body_format: 'html',
 }
 
 // Missing or unknown keys fall back to the defaults

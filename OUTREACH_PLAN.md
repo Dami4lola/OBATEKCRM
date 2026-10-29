@@ -1,6 +1,6 @@
 # OBATEK CRM — Lead Engine: Build Spec
 
-**Owner:** Dami Ayoade · **Status:** Building (stages 1–5 done) · **Last updated:** 2026-10-27
+**Owner:** Dami Ayoade · **Status:** Building (stages 1–6 done) · **Last updated:** 2026-10-28
 
 This is the implementation spec for **"OBATEK Lead Engine — Build Plan.md"**. That plan covers the strategy: ICP, pain signals, delivery modes, metrics. This file says how it gets built in this repo.
 
@@ -153,7 +153,20 @@ Run from **Check sites** (dashboard header: every lead in New not checked in the
 | Basic SEO | `<title>`, meta description, single `<h1>`, city in title or H1 | `seo_issues` |
 | Contact visibility | phone number on homepage | `phone_on_homepage` |
 
-The **primary hook** is the first match in this order: `no_site`, `no_booking`, `not_mobile`, `slow` (perf < 50), `outdated` (3+ years old), `seo_local`, `generic`.
+**Request links** ("Book a test drive", "Request a quote", "Trade-in appraisal", "Credit application") are found by link text, or by URL path when the link is an image, and stored in `request_paths`. Many platforms (ZopDealer, Wix forms) load the form itself with JavaScript, so the link is often the only thing the check can see.
+
+The **primary hook** is the first match in this order:
+1. `no_site`
+2. `no_booking`: nothing found at all
+3. `request_only`: request links, but no booking tool
+4. `not_mobile`
+5. `slow` (perf < 50)
+6. `outdated` (3+ years old)
+7. `request_only`: contact form only
+8. `seo_local`
+9. `generic`
+
+`request_only` means requests land in an inbox and someone has to reply. Because the check can miss forms, "not seen" findings are worded as not seen, never as missing (`011_copy_feedback.sql` adds the hook).
 
 **Rules:**
 - Respect robots.txt.
@@ -184,7 +197,7 @@ The same audit data later produces the **free ops audit PDF** (Week 4), which is
 
 ### Step 3: Write (manual mode only)
 - One card per lead:
-  - The audit hook in plain English (e.g. "No way to request a quote online").
+  - The audit hook in plain English (e.g. "Requests go to an inbox; no instant booking").
   - The **subject** and **opener** Claude drafted (§8), shown inside the rendered email 1 from the template.
   - Emails 2–3 collapsed.
 - You can edit the opener, the subject, or the whole email. **Approve** or **Skip** per lead.
@@ -233,11 +246,17 @@ US leads are covered by the same footer (CAN-SPAM) and honest subject lines.
 
 - **Model:** `claude-opus-5-5` (setting `copy_model`; chosen over Sonnet 5.5 for quality, about $15–30 per 750 leads). One call per lead through `/api/outreach/prepare` returns `{ subject, opener }` via structured output (`client.beta.messages.parse` + Zod), effort `medium`, with server-side `fallbacks: "default"` in case of a refusal. The system prompt (`prompts/copy-system.ts`) is cached.
 - **Prepare** also refreshes the site check if it's missing or older than `audit_max_age_days`, and is capped at `draft_daily_cap` (300) drafts a day.
-- **Checks before use (§16 S3):** subject 2–5 words, opener under ~40 words and at most two sentences, no links/emails/phone numbers, no banned phrases, no repeated greeting. One retry with the broken rules spelled out; after that the opener is left blank to write by hand. Website findings and review snippets go in as quoted data, with an instruction that they aren't instructions.
+- **Checks before use (§16 S3):** subject 2–5 words, opener under ~40 words and at most two sentences, no links/emails/phone numbers, no banned phrases, no repeated greeting, and no claims that something is missing ("there's no way to", "you don't have", "customers can't"), except for a confirmed `no_site`. The owner knows their own site, so the opener names what the current process costs them instead. One retry with the broken rules spelled out; after that the opener is left blank to write by hand. Website findings and review snippets go in as quoted data, with an instruction that they aren't instructions.
 - **Prompt inputs:**
   - Lead: company, vertical, city, owner name/first name, job title.
   - Audit findings, the primary hook, and review/hiring signals.
   - Up to `example_max_in_prompt` winning openers (§9), same vertical first.
+- **Feedback and writing rules** (`copy_feedback`, `011_copy_feedback.sql`):
+  - **Feedback** on a draft card redrafts it. Claude gets its previous subject and opener plus your note.
+  - Tick **Remember** to keep the note as a **writing rule**, for every lead or only the lead's vertical.
+  - Active rules (newest 20) go in a second system block after the fixed prompt, and are cached with it. They override the style rules, never the no-invented-facts or no-contact-details rules.
+  - Manage rules under **Writing rules** in the Write step; removing one turns it off and keeps the history.
+  - This is how each business using the engine makes drafts sound like its own staff.
 - **Templates:** `outreach_settings.email_templates` (`009_write_step.sql`), keyed by vertical with a `default`. Also `sender_name`. Edit them in the settings table for now.
   - Each has 3 steps with `{{first_name}}` (owner, else contact, else "there"), `{{company}}`, `{{opener}}`, `{{subject}}`, `{{sender_name}}` and `{{sender_first_name}}`. Emails 2–3 reuse the subject as `re: …`.
   - The rendered text for all 3 steps is stored in `outreach_emails.steps`, with `opener` and `template_key` alongside. Claude's untouched version goes in `draft_steps`; on approval, `author` becomes `claude` if unchanged, `claude_edited` if edited, `human` if Claude's draft was rejected or never made.
@@ -270,6 +289,7 @@ This uses examples in the prompt, not fine-tuning.
   - the first manual send was at least `auto_unlock_min_days` (14) ago. This matches the Build Plan's "approve each email for the first 2–3 weeks".
 
   You flip it; it never turns on by itself.
+- **Feedback history:** every note given on a draft is kept in `copy_feedback`, including ones not saved as rules, next to the email it was about. It shows which corrections come up most and should become rules or prompt changes.
 - **Caveat:** Apple Mail Privacy Protection inflates open rates. Reply rate and meetings (§12) are the honest signals. Moving the unlock to reply rate is a settings change.
 
 ---
@@ -292,10 +312,22 @@ Goal from the Build Plan: 3 calls a day plus email in under 30 minutes.
 
 ## 11. Sending, stats and scheduler
 
-### Instantly (`src/lib/outreach/instantly-client.ts`)
+### Instantly (`src/lib/outreach/instantly-client.ts`, sending built)
 - **Domain:** send only from **getobatek.com**, never obatek.net.
-- **Campaigns:** one per vertical plus `default`, with 3 steps whose bodies are custom variables. IDs go in `outreach_settings.instantly_campaigns`.
-- **Send:** add the lead to its campaign with the rendered steps. Store `instantly_campaign_id` / `instantly_lead_id`.
+- **Campaign setup in Instantly** (one per vertical plus `default`; at least `default`):
+  - Step 1: subject `{{subject_1}}`, body `{{body_1}}`.
+  - Step 2 (3 business days later): body `{{body_2}}`, subject left blank so it threads as a reply.
+  - Step 3 (5 business days after that): body `{{body_3}}`, subject blank.
+  - Footer: your name, OBATEK, the mailing address, and Instantly's unsubscribe link.
+  - Schedule: weekdays, recipient's business hours.
+  - Put the IDs in settings: `UPDATE outreach_settings SET value = '{"default":"<campaign id>"}'::jsonb WHERE key = 'instantly_campaigns';`
+  - Bodies arrive HTML-escaped with `<br>` line breaks (`instantly_body_format` = `html`). If the campaign is set to plain text only, set it to `text`.
+- **Send** (`/api/outreach/send`, one email per request, from **Send N approved** in the Write step):
+  - Re-checks server-side: `sending_paused`, `daily_send_cap`, suppression, CASL and the cooldown (a fail marks the email `blocked`).
+  - Adds the lead with `POST /api/v2/leads` (`skip_if_in_workspace: true`) and `subject_1..3` / `body_1..3` custom variables.
+  - Then stores `instantly_campaign_id` / `instantly_lead_id`, sets `status='sent'` (handed to Instantly), logs an `email` activity, and moves the lead to Contacted with `move_lead`.
+  - Errors: `status='failed'` with `last_error`. Account-wide problems (bad key, no plan, rate limit) stop the batch and leave emails approved.
+  - The run is marked `completed` with a summary when nothing is left to send.
 - **Polling, not webhooks** (the CRM runs locally). It runs when the pop-up opens and on each scheduler tick, for sent emails with `stats_synced_at` older than 15 minutes:
   - Update the stats.
   - Log new events as `email` activities, with `meta.external_id` used for dedupe.
@@ -365,7 +397,8 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   templates.ts         ✅ # fill the 3-email template, author tracking (browser-safe)
   run-audit.ts         ✅ # full site check for one lead, shared by audit + prepare
   examples.ts          # winner selection + stats
-  instantly-client.ts
+  instantly-client.ts  ✅ # create lead (stats polling in stage 7)
+  sending.ts           ✅ # custom variables, campaign choice
   prompts/
     copy-system.md
     reply-classifier.md
@@ -379,12 +412,12 @@ src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
   find-leads-dialog.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
-  write-step.tsx ✅  send-step.tsx  outreach-stats.tsx
+  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  outreach-stats.tsx
 src/app/api/outreach/
   source/route.ts          ✅ # Places search + dedupe + insert
   audit/route.ts           ✅ # site check (+ optional reviews), one lead
   prepare/route.ts         ✅ # audit refresh + Claude subject/opener, one lead
-  send/route.ts               # push one approved email, log activity, move lead
+  send/route.ts            ✅ # push one approved email, log activity, move lead
   cron/tick/route.ts          # due runs + stats polling (CRON_SECRET)
 scripts/outreach-scheduler.mjs
 ```
@@ -408,10 +441,11 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 1 | 3 ✅ | `004_sourcing.sql`; `sourcing.ts` + Find leads dialog; `scoring.ts`; score in the Gather step and on lead cards; **Today's calls** with basic briefs and outcome logging | 50+ Ottawa handyman leads in New with scores; call the top 15 by hand |
 | 2 | 4 ✅ | `005_audit.sql`; `audit.ts` (incl. email and owner discovery, SSRF-safe fetch) feeding `signals`; reviews signal; Check sites dialog; site check on the lead sheet; findings in call briefs | 50 real sites audited; 3 calls a day |
 | 3 | 5 ✅ | `009_write_step.sql`; Write step in the pop-up (Start run → drafts, or Review on an active run); Draft all with Claude; edit opener or full emails; approve/skip/undo | 20 drafts approved in the pop-up |
-| 3 | 6 | Instantly send + move to Contacted; scheduler + stats polling | A test run to your own inboxes sends 3 steps; then about 20 real emails a day |
-| 4 | 7 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
-| 5+ | 8 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
-| later | 9 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |
+| 3 | 6 ✅ | `010_send.sql`; Instantly send + move to Contacted | A test run to your own inbox shows the lead in the Instantly campaign and moves it to Contacted |
+| 3 | 7 | Scheduler + Instantly stats polling (opens, replies, bounces, unsubscribes → suppression) | A scheduled run fires on time; opens/replies show in the CRM; then about 20 real emails a day |
+| 4 | 8 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
+| 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
+| later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |
 
 **Before the first real send:** send the full sequence to 2–3 of your own addresses (Gmail, Outlook). Confirm inbox placement, the footer, the unsubscribe link, and that a reply stops the sequence.
 

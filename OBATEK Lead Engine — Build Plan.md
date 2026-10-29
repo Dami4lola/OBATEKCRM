@@ -137,7 +137,8 @@ Each week's build feeds that same week's outreach, so the system is tested on re
 - [x] Week 2 build: website audit ("Check sites"), review scan, call briefs with site findings
 - [ ] Week 2 outreach: 3 calls a day
 - [x] Week 3 build, part 1: Claude-drafted openers on a fixed template, with an approval gate in the Run outreach pop-up
-- [ ] Week 3 build, part 2: Instantly sending, then about 20 emails a day
+- [x] Week 3 build, part 2: Instantly sending (approved emails → campaign, lead → Contacted)
+- [ ] Week 3 build, part 3: scheduler + reply/open tracking, then about 20 emails a day
 - [ ] Week 4: hiring-signal feed, Jo case study, audit PDF offer, meetings-per-100 metric
 - [ ] Then: learning loop + auto mode (after 2–3 weeks of approved sends), generic webhook adapter, first enterprise CRM adapter, enterprise features per deal
 

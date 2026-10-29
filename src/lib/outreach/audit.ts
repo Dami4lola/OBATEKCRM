@@ -109,13 +109,49 @@ const BOOKING_TOOLS: [string, RegExp][] = [
 const QUOTE_CTA =
   /\b(request|get|free|online)\s+(a\s+|an\s+|your\s+)?(free\s+)?(quote|estimate)s?\b|\bbook\s+(now|online|an?\s+appointment|a\s+service)\b|\bschedule\s+(service|now|online|an?\s+appointment|a\s+visit)\b/i
 
-export function detectBooking(html: string, links: PageLink[]): { tool: string | null; quoteCta: boolean } {
+// Ways to send a request that someone then has to answer: test drives,
+// appointments, trade-in and credit forms. Dealer platforms like ZopDealer
+// load these forms with JavaScript, so the link is often all we can see.
+const REQUEST_CTA =
+  /\b(book|schedule|request|reserve)\s+(a\s+|an\s+|your\s+)?(test[\s-]?drive|appointment|consultation|visit|viewing|estimate|quote)s?\b|\btest[\s-]?drive\b|\btrade[\s-]?in\s+(appraisal|value|evaluation)\b|\b(credit|finance|financing|loan)\s+application\b|\bget\s+pre[\s-]?approved\b|\be[\s-]?price\b|\brequest\s+(a\s+)?(price|call\s?back|info(rmation)?)\b/i
+
+const MAX_REQUEST_LABELS = 5
+
+// "/book-a-test-drive/" -> "book a test drive", for links with no text
+function pathLabel(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname).replace(/[/_-]+/g, ' ').trim()
+  } catch {
+    return ''
+  }
+}
+
+export function detectBooking(
+  html: string,
+  links: PageLink[]
+): { tool: string | null; quoteCta: boolean; requests: string[] } {
   const tool = BOOKING_TOOLS.find(([, pattern]) => pattern.test(html))?.[0] ?? null
   const buttons = [...html.matchAll(/<button\b[^>]*>([\s\S]{0,200}?)<\/button>/gi)].map((m) =>
     htmlToText(m[1])
   )
-  const quoteCta = [...links.map((link) => link.text), ...buttons].some((text) => QUOTE_CTA.test(text))
-  return { tool, quoteCta }
+  const isRequest = (text: string) => QUOTE_CTA.test(text) || REQUEST_CTA.test(text)
+  const labels = [
+    ...links.map((link) => {
+      const text = link.text.trim()
+      if (text && isRequest(text)) return text
+      const path = pathLabel(link.url)
+      return path && isRequest(path) ? path : ''
+    }),
+    ...buttons.map((text) => (isRequest(text) ? text.trim() : '')),
+  ]
+
+  const requests: string[] = []
+  for (const label of labels) {
+    const clean = label.replace(/\s+/g, ' ').slice(0, 60)
+    if (clean && !requests.some((r) => r.toLowerCase() === clean.toLowerCase())) requests.push(clean)
+    if (requests.length === MAX_REQUEST_LABELS) break
+  }
+  return { tool, quoteCta: requests.length > 0, requests }
 }
 
 // A form someone could send a job request through
@@ -282,6 +318,7 @@ export async function auditSite(input: AuditInput): Promise<SiteAudit> {
     copyright_year: null,
     has_booking: false,
     booking_tool: null,
+    request_paths: [],
     has_contact_form: false,
     emails_found: [],
     owner_name: null,
@@ -391,6 +428,7 @@ export async function auditSite(input: AuditInput): Promise<SiteAudit> {
   const booking = detectBooking(allHtml, pageLinks)
   audit.booking_tool = booking.tool
   audit.has_booking = !!booking.tool || booking.quoteCta
+  audit.request_paths = booking.requests
   audit.has_contact_form = hasContactForm(allHtml)
   audit.emails_found = extractEmails(allHtml, finalHost)
   audit.owner_name = findOwnerName(allText)

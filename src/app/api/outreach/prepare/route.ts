@@ -4,16 +4,19 @@ import { requireTeamMember } from '@/lib/api/guards'
 import {
   countDraftsSince,
   fetchCopyExamples,
+  fetchCopyRules,
   fetchLead,
   fetchOutreachEmail,
   fetchSettings,
   markRunAwaitingReview,
+  saveCopyFeedback,
   updateOutreachEmail,
 } from '@/lib/outreach/adapters/obatek-crm'
 import { parseAudit, primaryHook } from '@/lib/outreach/audit-findings'
 import { runLeadAudit } from '@/lib/outreach/run-audit'
 import { draftWithClaude } from '@/lib/outreach/copywriter'
 import {
+  parseSteps,
   renderSteps,
   templateFor,
   templateVars,
@@ -23,6 +26,17 @@ import type { Json } from '@/types/database'
 
 const prepareSchema = z.object({
   emailId: z.string().uuid(),
+  // Redraft with the team's feedback; remember = keep it as a writing rule
+  feedback: z
+    .object({
+      note: z.string().trim().min(3, 'Feedback needs a few words').max(500, 'Keep feedback under 500 characters'),
+      remember: z.boolean(),
+      onlyVertical: z.boolean(),
+      // What's on screen now, which may have unsaved edits
+      subject: z.string().max(120).optional(),
+      opener: z.string().max(600).optional(),
+    })
+    .optional(),
 })
 
 // One lead per request: refresh the site check if needed, then Claude
@@ -35,7 +49,10 @@ export async function POST(request: NextRequest) {
 
     const parsed = prepareSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) {
-      return NextResponse.json({ error: 'emailId must be a uuid' }, { status: 400 })
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? 'Invalid request' },
+        { status: 400 }
+      )
     }
 
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -85,15 +102,36 @@ export async function POST(request: NextRequest) {
       audit = fresh.audit
     }
     const hook = audit ? primaryHook(audit) : 'generic'
+    const { feedback } = parsed.data
 
+    const [examples, rules] = await Promise.all([
+      fetchCopyExamples(supabase, lead.vertical, settings.example_max_in_prompt),
+      fetchCopyRules(supabase, lead.vertical),
+    ])
     const draft = await draftWithClaude({
       model: settings.copy_model,
       lead,
       audit,
       hook,
       offer: settings.offer_description,
-      examples: await fetchCopyExamples(supabase, lead.vertical, settings.example_max_in_prompt),
+      examples,
+      rules,
+      revision: feedback && {
+        subject: feedback.subject ?? parseSteps(email.steps)[0]?.subject ?? '',
+        opener: feedback.opener ?? email.opener ?? '',
+        feedback: feedback.note,
+      },
     })
+
+    // Saved once the redraft worked, so a retry doesn't store it twice
+    if (feedback) {
+      await saveCopyFeedback(supabase, {
+        note: feedback.note,
+        vertical: feedback.onlyVertical ? lead.vertical : null,
+        active: feedback.remember,
+        email_id: email.id,
+      })
+    }
 
     const template = templateFor(settings.email_templates, lead.vertical)
     const steps = renderSteps(
