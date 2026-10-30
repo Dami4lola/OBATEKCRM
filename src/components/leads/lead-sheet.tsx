@@ -11,7 +11,6 @@ import {
   Phone,
   Building2,
   DollarSign,
-  Send,
   CalendarPlus,
   Briefcase,
   Globe,
@@ -66,7 +65,6 @@ import {
 import { LeadOutreachFields } from './lead-outreach-fields'
 import { externalUrl } from '@/lib/utils'
 import { LeadSiteCheck } from './lead-site-check'
-import { ComposeEmailDialog } from '@/components/email/compose-email-dialog'
 import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
 import { useLeadMeetings } from '@/lib/queries/meetings'
 import { getRoleLabel } from '@/lib/validations/meeting'
@@ -80,7 +78,6 @@ interface LeadSheetProps {
 
 export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [isEmailOpen, setIsEmailOpen] = useState(false)
   const [isMeetingOpen, setIsMeetingOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
   const updateLead = useUpdateLead()
@@ -215,25 +212,14 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   </div>
                 )}
                 {lead.email && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <a
-                        href={`mailto:${lead.email}`}
-                        className="text-primary hover:underline"
-                      >
-                        {lead.email}
-                      </a>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsEmailOpen(true)}
-                      className="h-7 px-2"
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={`mailto:${lead.email}`}
+                      className="text-primary hover:underline"
                     >
-                      <Send className="h-3 w-3 mr-1" />
-                      Send
-                    </Button>
+                      {lead.email}
+                    </a>
                   </div>
                 )}
                 {lead.phone && (
@@ -538,12 +524,6 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
             </Form>
           )}
         </div>
-
-        <ComposeEmailDialog
-          open={isEmailOpen}
-          onOpenChange={setIsEmailOpen}
-          lead={lead}
-        />
 
         <MeetingFormDialog
           open={isMeetingOpen}

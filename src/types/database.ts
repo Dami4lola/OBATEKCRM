@@ -19,7 +19,11 @@ export type OutreachRunStatus =
   | 'failed'
   | 'cancelled'
 export type OutreachMode = 'manual' | 'auto'
-export type OutreachEmailStatus = 'blocked' | 'draft' | 'approved' | 'sent' | 'failed' | 'skipped'
+export type OutreachEmailStatus = 'blocked' | 'draft' | 'approved' | 'queued' | 'sent' | 'failed' | 'skipped'
+export type SequenceState = 'active' | 'finished' | 'stopped'
+export type OutreachMessageKind = 'outreach' | 'seed' | 'test'
+export type SeedPlacement = 'inbox' | 'promotions' | 'spam' | 'missing'
+export type MailboxStatus = 'connected' | 'needs_reconnect'
 export type OutreachHook =
   | 'no_site'
   | 'no_booking'
@@ -347,95 +351,6 @@ export interface Database {
           }
         ]
       }
-      email_accounts: {
-        Row: {
-          id: string
-          user_id: string
-          provider: 'outlook'
-          email_address: string
-          access_token: string
-          refresh_token: string
-          token_expires_at: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          provider: 'outlook'
-          email_address: string
-          access_token: string
-          refresh_token: string
-          token_expires_at: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          provider?: 'outlook'
-          email_address?: string
-          access_token?: string
-          refresh_token?: string
-          token_expires_at?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'email_accounts_user_id_fkey'
-            columns: ['user_id']
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
-          }
-        ]
-      }
-      email_logs: {
-        Row: {
-          id: string
-          email_account_id: string
-          lead_id: string
-          subject: string
-          body: string
-          sent_at: string
-          status: 'sent' | 'failed' | 'bounced'
-          error_message: string | null
-        }
-        Insert: {
-          id?: string
-          email_account_id: string
-          lead_id: string
-          subject: string
-          body: string
-          sent_at?: string
-          status?: 'sent' | 'failed' | 'bounced'
-          error_message?: string | null
-        }
-        Update: {
-          id?: string
-          email_account_id?: string
-          lead_id?: string
-          subject?: string
-          body?: string
-          sent_at?: string
-          status?: 'sent' | 'failed' | 'bounced'
-          error_message?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'email_logs_email_account_id_fkey'
-            columns: ['email_account_id']
-            referencedRelation: 'email_accounts'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'email_logs_lead_id_fkey'
-            columns: ['lead_id']
-            referencedRelation: 'leads'
-            referencedColumns: ['id']
-          }
-        ]
-      }
       outreach_runs: {
         Row: {
           id: string
@@ -511,6 +426,11 @@ export interface Database {
           unsubscribed_at: string | null
           is_example: boolean
           stats_synced_at: string | null
+          queued_at: string | null
+          sequence_state: SequenceState | null
+          next_step: number | null
+          next_step_at: string | null
+          stopped_reason: string | null
           created_at: string
           updated_at: string
         }
@@ -542,6 +462,11 @@ export interface Database {
           unsubscribed_at?: string | null
           is_example?: boolean
           stats_synced_at?: string | null
+          queued_at?: string | null
+          sequence_state?: SequenceState | null
+          next_step?: number | null
+          next_step_at?: string | null
+          stopped_reason?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -573,6 +498,11 @@ export interface Database {
           unsubscribed_at?: string | null
           is_example?: boolean
           stats_synced_at?: string | null
+          queued_at?: string | null
+          sequence_state?: SequenceState | null
+          next_step?: number | null
+          next_step_at?: string | null
+          stopped_reason?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -587,6 +517,58 @@ export interface Database {
             foreignKeyName: 'outreach_emails_run_id_fkey'
             columns: ['run_id']
             referencedRelation: 'outreach_runs'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      outreach_messages: {
+        Row: {
+          id: string
+          email_id: string | null
+          kind: OutreachMessageKind
+          step: number | null
+          to_address: string
+          subject: string | null
+          graph_message_id: string | null
+          internet_message_id: string | null
+          conversation_id: string | null
+          sent_at: string
+          placement: SeedPlacement | null
+          placement_checked_at: string | null
+        }
+        Insert: {
+          id?: string
+          email_id?: string | null
+          kind?: OutreachMessageKind
+          step?: number | null
+          to_address: string
+          subject?: string | null
+          graph_message_id?: string | null
+          internet_message_id?: string | null
+          conversation_id?: string | null
+          sent_at?: string
+          placement?: SeedPlacement | null
+          placement_checked_at?: string | null
+        }
+        Update: {
+          id?: string
+          email_id?: string | null
+          kind?: OutreachMessageKind
+          step?: number | null
+          to_address?: string
+          subject?: string | null
+          graph_message_id?: string | null
+          internet_message_id?: string | null
+          conversation_id?: string | null
+          sent_at?: string
+          placement?: SeedPlacement | null
+          placement_checked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'outreach_messages_email_id_fkey'
+            columns: ['email_id']
+            referencedRelation: 'outreach_emails'
             referencedColumns: ['id']
           }
         ]
@@ -731,6 +713,36 @@ export interface Database {
         Args: Record<string, never>
         Returns: boolean
       }
+      outreach_mailbox_status: {
+        Args: Record<string, never>
+        Returns: {
+          address: string
+          status: MailboxStatus
+          connected_at: string
+          inbox_checked_at: string | null
+        }[]
+      }
+      get_outreach_mailbox_secret: {
+        Args: Record<string, never>
+        Returns: {
+          address: string
+          refresh_token_enc: string
+          status: MailboxStatus
+          inbox_checked_at: string | null
+        }[]
+      }
+      connect_outreach_mailbox: {
+        Args: { p_address: string; p_refresh_token_enc: string }
+        Returns: undefined
+      }
+      update_outreach_mailbox: {
+        Args: { p_refresh_token_enc?: string; p_status?: MailboxStatus; p_inbox_checked_at?: string }
+        Returns: undefined
+      }
+      disconnect_outreach_mailbox: {
+        Args: Record<string, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
@@ -762,18 +774,15 @@ export type MeetingWithLead = Meeting & {
   leads: Pick<Lead, 'id' | 'contact_name' | 'company_name' | 'stage_id'> | null
 }
 
-export type EmailAccount = Database['public']['Tables']['email_accounts']['Row']
-export type EmailAccountInsert = Database['public']['Tables']['email_accounts']['Insert']
-export type EmailAccountUpdate = Database['public']['Tables']['email_accounts']['Update']
-export type EmailLog = Database['public']['Tables']['email_logs']['Row']
-export type EmailLogInsert = Database['public']['Tables']['email_logs']['Insert']
-
 export type OutreachRun = Database['public']['Tables']['outreach_runs']['Row']
 export type OutreachRunInsert = Database['public']['Tables']['outreach_runs']['Insert']
 export type OutreachRunUpdate = Database['public']['Tables']['outreach_runs']['Update']
 export type OutreachEmail = Database['public']['Tables']['outreach_emails']['Row']
 export type OutreachEmailInsert = Database['public']['Tables']['outreach_emails']['Insert']
 export type OutreachEmailUpdate = Database['public']['Tables']['outreach_emails']['Update']
+export type OutreachMessage = Database['public']['Tables']['outreach_messages']['Row']
+export type OutreachMessageInsert = Database['public']['Tables']['outreach_messages']['Insert']
+export type OutreachMessageUpdate = Database['public']['Tables']['outreach_messages']['Update']
 export type Suppression = Database['public']['Tables']['suppression_list']['Row']
 export type SuppressionInsert = Database['public']['Tables']['suppression_list']['Insert']
 export type OutreachSetting = Database['public']['Tables']['outreach_settings']['Row']

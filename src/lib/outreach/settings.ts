@@ -34,6 +34,17 @@ export interface OutreachSettings {
   reply_model: string
   // Set when sending was paused automatically (bounces); null otherwise
   sending_paused_reason: string | null
+  // Sending from the Microsoft 365 mailbox (014)
+  sending_domain: string
+  send_timezone: string
+  sends_per_tick: number
+  // Business days before step 2, then before step 3
+  followup_business_days: number[]
+  // Warm-up: a day's limit in week 1, 2, 3, 4+ after warmup_started_at
+  send_ramp: number[]
+  warmup_started_at: string | null
+  seed_addresses: string[]
+  auto_unlock_reply_rate: number
 }
 
 export interface TemplateStep {
@@ -49,7 +60,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql and 013_scheduler_stats.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql and 014_mailbox.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -121,6 +132,14 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   cron_drafts_per_tick: 5,
   reply_model: 'claude-haiku-5-5',
   sending_paused_reason: null,
+  sending_domain: 'getobatek.com',
+  send_timezone: 'America/Toronto',
+  sends_per_tick: 2,
+  followup_business_days: [3, 5],
+  send_ramp: [5, 10, 15, 20],
+  warmup_started_at: null,
+  seed_addresses: [],
+  auto_unlock_reply_rate: 0.05,
 }
 
 // Missing or unknown keys fall back to the defaults

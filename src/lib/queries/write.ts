@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { approvedAuthor, parseSteps, type PrepareEmailResult } from '@/lib/outreach/templates'
 import type { SendEmailResult } from '@/lib/outreach/sending'
 import type { SyncResult } from '@/lib/outreach/stats-sync'
-import type { CopyFeedback, Json, Lead, OutreachEmail, OutreachEmailStep } from '@/types/database'
+import type { CopyFeedback, Json, Lead, MailboxStatus, OutreachEmail, OutreachEmailStep } from '@/types/database'
 
 export interface RunEmail {
   email: OutreachEmail
@@ -223,4 +223,40 @@ export async function requestStatsSync(): Promise<SyncResult> {
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(body.error || 'Failed to sync stats from Instantly')
   return body as SyncResult
+}
+
+export interface MailboxStatusRow {
+  address: string
+  status: MailboxStatus
+  connected_at: string
+  inbox_checked_at: string | null
+}
+
+// The connected sending mailbox, or null. Never includes the token.
+export function useMailboxStatus() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'mailbox'],
+    queryFn: async (): Promise<MailboxStatusRow | null> => {
+      const { data, error } = await supabase.rpc('outreach_mailbox_status')
+      if (error) throw error
+      return data?.[0] ?? null
+    },
+  })
+}
+
+export function useDisconnectMailbox() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('disconnect_outreach_mailbox')
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['outreach', 'mailbox'] })
+    },
+  })
 }
