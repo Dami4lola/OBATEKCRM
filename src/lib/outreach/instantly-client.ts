@@ -40,40 +40,6 @@ async function instantlyRequest<T>(
   return data as T
 }
 
-export interface NewInstantlyLead {
-  campaign: string
-  email: string
-  first_name?: string | null
-  company_name?: string | null
-  website?: string | null
-  phone?: string | null
-  // Flat values only (no objects or arrays)
-  custom_variables: Record<string, string>
-}
-
-interface InstantlyLead {
-  id?: string
-  campaign?: string | null
-}
-
-// Adds the lead to the campaign; Instantly sends the sequence on its own
-// schedule. Never adds someone already anywhere in the workspace.
-export async function createInstantlyLead(
-  apiKey: string,
-  lead: NewInstantlyLead
-): Promise<{ id: string }> {
-  const created = await instantlyRequest<InstantlyLead>(apiKey, 'POST', '/leads', {
-    ...lead,
-    skip_if_in_workspace: true,
-  })
-  // Instantly doesn't document what a skipped lead returns; no id means
-  // nothing was added
-  if (!created.id) {
-    throw new InstantlyError('Instantly skipped this lead: the email is already in your Instantly workspace.', 409)
-  }
-  return { id: created.id }
-}
-
 // Engagement fields from a lead (GET/list), as Instantly documents them
 export interface InstantlyLeadStats {
   id: string

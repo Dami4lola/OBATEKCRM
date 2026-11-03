@@ -5,7 +5,15 @@ import { createClient } from '@/lib/supabase/client'
 import { approvedAuthor, parseSteps, type PrepareEmailResult } from '@/lib/outreach/templates'
 import type { SendEmailResult } from '@/lib/outreach/sending'
 import type { SyncResult } from '@/lib/outreach/stats-sync'
-import type { CopyFeedback, Json, Lead, MailboxStatus, OutreachEmail, OutreachEmailStep } from '@/types/database'
+import type {
+  CopyFeedback,
+  Json,
+  Lead,
+  MailboxStatus,
+  OutreachEmail,
+  OutreachEmailStatus,
+  OutreachEmailStep,
+} from '@/types/database'
 
 export interface RunEmail {
   email: OutreachEmail
@@ -24,7 +32,7 @@ export function useRunEmails(runId: string | null) {
         .from('outreach_emails')
         .select('*, leads(*)')
         .eq('run_id', runId!)
-        .in('status', ['draft', 'approved', 'skipped', 'sent', 'failed', 'blocked'])
+        .in('status', ['draft', 'approved', 'queued', 'skipped', 'sent', 'failed', 'blocked'])
         .order('created_at', { ascending: true })
       if (error) throw error
       return (data || [])
@@ -81,15 +89,19 @@ export function useReviewEmail() {
             }
           : action === 'skip'
             ? { status: 'skipped' as const, approved_at: null }
-            : { status: 'draft' as const, approved_at: null }
+            : { status: 'draft' as const, approved_at: null, queued_at: null }
 
+      // Never reopen an email the scheduler has already sent
+      const from: OutreachEmailStatus[] = action === 'reopen' ? ['approved', 'queued', 'skipped', 'failed'] : ['draft']
       const { data, error } = await supabase
         .from('outreach_emails')
         .update(updates)
         .eq('id', email.id)
+        .in('status', from)
         .select()
-        .single()
+        .maybeSingle()
       if (error) throw error
+      if (!data) throw new Error('This email changed (it may have just been sent). Refresh to see it.')
       return data
     },
     onSuccess: () => {
@@ -98,6 +110,7 @@ export function useReviewEmail() {
   })
 }
 
+// Queues one approved email; the scheduler sends it from the mailbox
 export async function requestSend(emailId: string): Promise<SendEmailResult> {
   const response = await fetch('/api/outreach/send', {
     method: 'POST',
@@ -105,8 +118,20 @@ export async function requestSend(emailId: string): Promise<SendEmailResult> {
     body: JSON.stringify({ emailId }),
   })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.error || 'Failed to send')
+  if (!response.ok) throw new Error(body.error || 'Failed to queue')
   return body as SendEmailResult
+}
+
+// Email 1, footer included, to the connected mailbox itself
+export async function requestTestSend(emailId: string): Promise<{ sentTo: string }> {
+  const response = await fetch('/api/outreach/send/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emailId }),
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error || 'Failed to send the test')
+  return body as { sentTo: string }
 }
 
 export interface RunSummary {

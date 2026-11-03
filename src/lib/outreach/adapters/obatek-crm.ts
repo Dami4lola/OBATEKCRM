@@ -9,6 +9,8 @@ import type {
   OutreachEmail,
   OutreachEmailInsert,
   OutreachEmailUpdate,
+  OutreachMessage,
+  OutreachMessageInsert,
   OutreachRun,
   Stage,
   SuppressionReason,
@@ -462,3 +464,88 @@ export async function pauseSending(crm: Crm, reason: string): Promise<void> {
   if (why.error) throw why.error
 }
 
+
+// ---------- sending from the mailbox (§11) ----------
+
+export interface EmailWithLead {
+  email: OutreachEmail
+  lead: Lead
+}
+
+function withLead(rows: (OutreachEmail & { leads: unknown })[] | null): EmailWithLead[] {
+  return (rows || [])
+    .filter((row) => row.leads)
+    .map(({ leads, ...email }) => ({ email: email as OutreachEmail, lead: leads as Lead }))
+}
+
+// Approved emails waiting for the scheduler, oldest first
+export async function fetchQueued(crm: Crm, limit: number): Promise<EmailWithLead[]> {
+  const { data, error } = await crm
+    .from('outreach_emails')
+    .select('*, leads(*)')
+    .eq('status', 'queued')
+    .order('queued_at', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+  return withLead(data)
+}
+
+export async function fetchDueFollowUps(crm: Crm, now: Date, limit: number): Promise<EmailWithLead[]> {
+  const { data, error } = await crm
+    .from('outreach_emails')
+    .select('*, leads(*)')
+    .eq('sequence_state', 'active')
+    .lte('next_step_at', now.toISOString())
+    .order('next_step_at', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+  return withLead(data)
+}
+
+export async function fetchMessage(crm: Crm, emailId: string, step: number): Promise<OutreachMessage | null> {
+  const { data, error } = await crm
+    .from('outreach_messages')
+    .select('*')
+    .eq('email_id', emailId)
+    .eq('step', step)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function insertOutreachMessage(crm: Crm, message: OutreachMessageInsert): Promise<void> {
+  const { error } = await crm.from('outreach_messages').insert(message)
+  // Already recorded (a retried tick): nothing to add
+  if (error && error.code !== '23505') throw error
+}
+
+// Messages that count toward the daily cap: outreach and seed checks, not
+// tests to yourself
+export async function countMessagesSince(crm: Crm, since: Date): Promise<number> {
+  const { count, error } = await crm
+    .from('outreach_messages')
+    .select('id', { count: 'exact', head: true })
+    .in('kind', ['outreach', 'seed'])
+    .gte('sent_at', since.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function fetchSeedMessages(crm: Crm, limit: number): Promise<OutreachMessage[]> {
+  const { data, error } = await crm
+    .from('outreach_messages')
+    .select('*')
+    .eq('kind', 'seed')
+    .order('sent_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data || []
+}
+
+export async function setSetting(crm: Crm, key: string, value: Json): Promise<void> {
+  const { error } = await crm
+    .from('outreach_settings')
+    .update({ value, updated_at: new Date().toISOString() })
+    .eq('key', key)
+  if (error) throw error
+}

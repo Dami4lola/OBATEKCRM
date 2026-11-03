@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hasValidCronSecret } from '@/lib/api/guards'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getMailboxAccess } from '@/lib/email/mailbox'
 import { fetchSettings } from '@/lib/outreach/adapters/obatek-crm'
 import { draftPending, startDueRuns } from '@/lib/outreach/scheduler'
+import { sendDue } from '@/lib/outreach/send-queue'
 import { syncStats } from '@/lib/outreach/stats-sync'
 
 function errorMessage(error: unknown) {
@@ -10,8 +12,8 @@ function errorMessage(error: unknown) {
 }
 
 // Called every 5 minutes by scripts/outreach-scheduler.mjs (§11): start due
-// runs, write a few drafts, pull stats from Instantly. Each part runs even
-// if an earlier one fails.
+// runs, write a few drafts, read stats, then send what's due from the
+// mailbox. Each part runs even if an earlier one fails.
 export async function POST(request: NextRequest) {
   if (!hasValidCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -58,6 +60,19 @@ export async function POST(request: NextRequest) {
       }
     } else {
       summary.stats = 'skipped: INSTANTLY_API_KEY is not set'
+    }
+
+    // Last, so a reply read above stops its sequence before the next send
+    try {
+      const mailbox = await getMailboxAccess(crm)
+      summary.sending = await sendDue(crm, {
+        mailbox,
+        settings,
+        mailingAddress: process.env.OBATEK_MAILING_ADDRESS,
+        now,
+      })
+    } catch (error) {
+      summary.sendError = errorMessage(error)
     }
 
     return NextResponse.json(summary)

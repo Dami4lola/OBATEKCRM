@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { format } from 'date-fns'
 import { Check, ChevronDown, ChevronRight, Loader2, MessageSquare, Sparkles, Undo2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -30,7 +31,7 @@ import { SendPanel } from './send-panel'
 const CONCURRENCY = 3
 const EMAIL_1_MAX_WORDS = 90
 
-// What Instantly has reported for a sent email so far
+// Where a sent email's sequence is, and what came back from the inbox
 function sentStats(email: OutreachEmail): string {
   const parts: string[] = []
   if (email.bounced_at) parts.push('Bounced')
@@ -38,9 +39,14 @@ function sentStats(email: OutreachEmail): string {
   if (email.replied_at) {
     parts.push(email.reply_class ? `Replied: ${REPLY_CLASS_LABELS[email.reply_class].toLowerCase()}` : 'Replied')
   }
-  if (email.open_count > 0) parts.push(`Opened ${email.open_count}×`)
-  if (parts.length > 0) return parts.join(' · ')
-  return email.stats_synced_at ? 'No opens yet' : 'Waiting for stats from Instantly'
+  if (email.sequence_state === 'active' && email.next_step && email.next_step_at) {
+    parts.push(`Email ${email.next_step} due ${format(new Date(email.next_step_at), 'EEE MMM d')}`)
+  } else if (email.sequence_state === 'finished') {
+    parts.push('All emails sent')
+  } else if (email.sequence_state === 'stopped' && !email.replied_at && !email.bounced_at && !email.unsubscribed_at) {
+    parts.push(`Stopped: ${email.stopped_reason ?? 'no reason saved'}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : 'No reply yet'
 }
 
 function templateLabel(key: string) {
@@ -124,7 +130,7 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
 
   const reviewed = email.status !== 'draft'
   // Sent and blocked are final; the rest can go back to a draft
-  const canUndo = email.status === 'approved' || email.status === 'skipped' || email.status === 'failed'
+  const canUndo = ['approved', 'queued', 'skipped', 'failed'].includes(email.status)
 
   return (
     <div className={`space-y-3 rounded-md border p-3 ${reviewed ? 'bg-muted/30' : ''}`}>
@@ -138,7 +144,8 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
         </div>
         {email.status === 'approved' && <Badge className="bg-green-600">Approved</Badge>}
         {email.status === 'skipped' && <Badge variant="outline">Skipped</Badge>}
-        {email.status === 'sent' && <Badge className="bg-blue-600">Sent to Instantly</Badge>}
+        {email.status === 'queued' && <Badge className="bg-sky-600">Queued</Badge>}
+        {email.status === 'sent' && <Badge className="bg-blue-600">Sent</Badge>}
         {email.status === 'failed' && <Badge variant="destructive">Failed</Badge>}
         {email.status === 'blocked' && <Badge variant="destructive">Blocked</Badge>}
       </div>
@@ -339,7 +346,7 @@ export function WriteStep({ runId }: { runId: string }) {
   const count = (status: string) => items.filter((i) => i.email.status === status).length
   const approved = count('approved')
   const skipped = count('skipped')
-  const sent = count('sent')
+  const sent = count('sent') + count('queued')
   const toReview = count('draft')
   const undrafted = items.filter((i) => i.email.status === 'draft' && !i.email.drafted_at)
 
@@ -413,7 +420,7 @@ export function WriteStep({ runId }: { runId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>
           {toReview} to review · {approved} approved · {skipped} skipped
-          {sent > 0 && ` · ${sent} sent`}
+          {sent > 0 && ` · ${sent} queued or sent`}
         </span>
         {batch ? (
           <div className="flex items-center gap-2">
@@ -434,7 +441,7 @@ export function WriteStep({ runId }: { runId: string }) {
       </div>
       <p className="text-xs text-muted-foreground">
         Claude writes the subject and opening line from each site check; the rest is
-        your template. Approved emails go to Instantly when you send them below.
+        your template. Approved emails are queued below and go out from your mailbox.
       </p>
       <CopyRulesPanel />
       <SendPanel runId={runId} items={items} settings={settings} />
