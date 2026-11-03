@@ -39,7 +39,7 @@ Five layers run in order; each one is useful on its own before the next exists.
    - Only leads above the threshold enter outreach
 3. **Personalization.** Claude drafts one specific opening line from the audit and reviews. The rest of the template stays short and fixed so it can be tested.
 4. **Sequencing.** A qualified lead creates:
-   - An email sequence from getobatek.com through Instantly
+   - An email sequence sent from the getobatek.com Microsoft 365 mailbox by the engine itself (follow-ups, reply and bounce tracking in-house)
    - A call task with a one-screen brief: owner name, the pain signal, one question to ask
    - A LinkedIn message to copy and paste manually
 5. **Inbound and referral.**
@@ -118,7 +118,8 @@ Automation multiplies mistakes as well as reach, so sending gets guardrails befo
 - **Canada (CASL):** stricter than US rules. Keep sender identification and a working unsubscribe in every email, and record the basis for contacting each lead. Confirm the details with a lawyer before scaling Canadian sends.
 - **US (CAN-SPAM):** physical address, honest subject lines, working unsubscribe.
 - **LinkedIn:** keep it manual copy-and-paste. Automated sending risks account restrictions.
-- **Domain:** send only from getobatek.com, never the main .net domain. Set up SPF, DKIM and DMARC, and warm the domain before volume.
+- **Domain:** send only from getobatek.com, never the main .net domain. Set up SPF, DKIM and DMARC, and warm the domain before volume with a slow ramp enforced by the engine (5 → 20 a day over four weeks; `OUTREACH_PLAN.md` §11, §13).
+- **Unsubscribe by reply:** every email says to reply STOP or "unsubscribe"; the engine reads the mailbox and adds the address to do-not-contact automatically, well inside the 10-business-day limit.
 - **Approval gate:** approve each email yourself for the first 2–3 weeks, then switch to fully automatic once the drafts are consistently good.
 - **Audit log:** record every send per tenant. It covers compliance and is an enterprise requirement anyway.
 
@@ -133,12 +134,13 @@ Each week's build feeds that same week's outreach, so the system is tested on re
 - [x] Done: lead fields (website, city, vertical, staff size, email source) in the form and the Lusha importer; Run outreach pop-up with gather, CASL/suppression checks, and run now or schedule
 - [x] Security: team-only data access, guarded server routes
 - [x] Week 1 build: Places API pull ("Find leads"), scoring rules, "Today's calls" list with briefs and outcome logging
-- [ ] Week 1 outreach: call the top 15 by hand. **Start getobatek.com warm-up now**, so Week 3 can send
+- [ ] Week 1 outreach: call the top 15 by hand. **Start getobatek.com warm-up now** (in-house: real 1:1 mail from the mailbox, seed inboxes, then the ramp; `OUTREACH_PLAN.md` §13), so Week 3 can send
 - [x] Week 2 build: website audit ("Check sites"), review scan, call briefs with site findings
 - [ ] Week 2 outreach: 3 calls a day
 - [x] Week 3 build, part 1: Claude-drafted openers on a fixed template, with an approval gate in the Run outreach pop-up
-- [x] Week 3 build, part 2: Instantly sending (approved emails → campaign, lead → Contacted)
-- [x] Week 3 build, part 3: scheduler + reply/open tracking, then about 20 emails a day
+- [x] Week 3 build, part 2: Instantly sending (approved emails → campaign, lead → Contacted) (replaced by part 4)
+- [x] Week 3 build, part 3: scheduler + reply/open tracking (scheduler kept; tracking replaced by part 4)
+- [x] Week 3 build, part 4: in-house sending from Microsoft 365: connect the mailbox, threaded follow-ups, inbox sync for replies, bounces and unsubscribes, warm-up ramp. Replaces Instantly
 - [ ] Week 4: hiring-signal feed, Jo case study, audit PDF offer, meetings-per-100 metric
 - [ ] Then: learning loop + auto mode (after 2–3 weeks of approved sends), generic webhook adapter, first enterprise CRM adapter, enterprise features per deal
 

@@ -1,13 +1,13 @@
 # OBATEK CRM — Lead Engine: Build Spec
 
-**Owner:** Dami Ayoade · **Status:** Building (stages 1–6 done) · **Last updated:** 2026-10-28
+**Owner:** Dami Ayoade · **Status:** Building (stages 1–7 done; sending moved in-house in 7.1–7.3) · **Last updated:** 2026-11-03
 
 This is the implementation spec for **"OBATEK Lead Engine — Build Plan.md"**. That plan covers the strategy: ICP, pain signals, delivery modes, metrics. This file says how it gets built in this repo.
 
 The engine works in four steps:
 - It **finds** small trades businesses with visible operational pain (Google Places + a website audit).
 - It **scores** them and puts the qualified ones in the **New** stage.
-- It **reaches out** through a **Run outreach** pop-up (email through Instantly) and a **daily call list** (call tasks with a one-screen brief).
+- It **reaches out** through a **Run outreach** pop-up (email from the getobatek.com Microsoft 365 mailbox through Microsoft Graph) and a **daily call list** (call tasks with a one-screen brief).
 - Each lead moves to **Contacted** once its first email goes out. You choose when a run happens: now, or at a scheduled time.
 
 The engine starts in **manual mode**: you approve every email. The best performers become the examples Claude learns from. Once results hold up, you switch to **auto mode**.
@@ -51,7 +51,9 @@ The live schema is `pipelines → stages → leads`, with `activities`, `tasks` 
 | Call list | `tasks` (`kind='call'`, title + `description` = the brief, `due_date` = today) | 004: + `kind` |
 | Booked meetings (the main metric) | `meetings` | none |
 | A run (now or scheduled) | `outreach_runs` | 002 |
-| Each email + its stats (the learning set) | `outreach_emails` | 002; stage 5 adds `opener`, `template_key` |
+| Each email + its stats (the learning set) | `outreach_emails` | 002; stage 5 adds `opener`, `template_key`; 014 adds `queued` and the sequence columns |
+| Each message actually sent (per step, seed checks, tests) | `outreach_messages` | 014 |
+| The sending mailbox connection (encrypted token) | `outreach_mailbox` | 014 |
 | Never contact again | `suppression_list` | 002 |
 | Switches, thresholds, weights, templates | `outreach_settings` | 002; 004 adds keys |
 | Who may use the CRM | `team_members` + `is_team_member()` | 003 |
@@ -204,15 +206,16 @@ The same audit data later produces the **free ops audit PDF** (Week 4), which is
 - `author` is recorded as `human` (written from blank), `claude` (accepted unchanged) or `claude_edited`.
 - A scheduled run in manual mode does the audit and drafts, then sets `status='awaiting_review'` and waits here.
 
-### Step 4: Send
-- Approved emails are processed **one lead per request**, with a progress bar.
-- For each lead:
-  1. Push to Instantly.
-  2. Mark `status='sent'`.
+### Step 4: Queue and send
+- **Queue N approved** re-checks each email server-side (paused, suppression, CASL, cooldown, text present) and marks it `queued`.
+- The scheduler sends queued emails from the mailbox, `sends_per_tick` per 5-minute tick inside the send window and under the day's cap (§11). For each one:
+  1. Send email 1 through Graph.
+  2. Mark `status='sent'` and start the sequence.
   3. Log an `email` activity.
   4. Move the lead to Contacted at position 0.
-- Failures stay in New and appear in the summary (`outreach_runs.summary`).
-- Respects `sending_paused` and `daily_send_cap`.
+- Emails 2–3 go out as replies in the same thread on business days, until a reply, bounce or unsubscribe.
+- **Send test to me** sends email 1, footer included, to the mailbox itself straight away.
+- Failures and blocked leads appear on their cards; a queued email can be undone back to a draft.
 
 In **auto mode**, Step 3 is skipped.
 
@@ -229,12 +232,12 @@ Block if:
 
 The CASL basis for each lead is its `email_source`: the address was published by the business, and the pitch relates to their role. Website-found emails from the audit (§5) give Places leads this basis automatically. **Confirm the CASL details with a lawyer before scaling Canadian sends** (Build Plan).
 
-Every outgoing email must include (enforced in the Instantly template):
+Every outgoing email must include (added by `mail-message.ts` at send time; sending refuses without it):
 - sender name and business name
 - mailing address (`OBATEK_MAILING_ADDRESS`)
-- Instantly's hosted unsubscribe link
+- the opt-out line: "Not a fit? Reply STOP or "unsubscribe" and I won't email you again."
 
-US leads are covered by the same footer (CAN-SPAM) and honest subject lines.
+No links, no tracking pixel. The inbox sync turns STOP/unsubscribe replies into do-not-contact entries within one tick; the legal limit is 10 business days (CASL and CAN-SPAM). The mailbox must keep receiving mail for at least 60 days after the last send (CASL; CAN-SPAM 30). If the laptop will be off for over a week, handle STOP replies by hand in Outlook. US leads are covered by the same footer (CAN-SPAM) and honest subject lines.
 
 **Audit log:** `outreach_emails` (who, what, when, which template, which author) plus the `email` activity on the lead is the per-send record the Build Plan asks for.
 
@@ -278,20 +281,19 @@ US leads are covered by the same footer (CAN-SPAM) and honest subject lines.
 This uses examples in the prompt, not fine-tuning.
 
 - **Stats:**
-  - Every sent email keeps opens, replies, bounces and unsubscribes, updated by polling (§11).
+  - Every sent email keeps replies, bounces and unsubscribes, read from the mailbox (§11). Opens aren't tracked: emails are plain text with no pixel.
   - Replies are classified with `claude-haiku-5-5` into `interested`, `not_now`, `wrong_person`, `unsubscribe`, `out_of_office` or `other`.
 - **Winners** (`is_example = true`): the **opener and subject** of any email that:
-  - got an `interested` reply,
-  - reached `example_min_sends` (10) with an open rate at or above target, or
+  - got an `interested` reply, or
   - you starred by hand.
 - **Auto-mode unlock.** The **Switch to auto** toggle becomes available when all three of these hold:
   - sends ≥ `auto_unlock_min_sends` (50),
-  - open rate ≥ `auto_unlock_open_rate` (0.5), and
+  - reply rate ≥ `auto_unlock_reply_rate` (placeholder 0.05), and
   - the first manual send was at least `auto_unlock_min_days` (14) ago. This matches the Build Plan's "approve each email for the first 2–3 weeks".
 
   You flip it; it never turns on by itself.
 - **Feedback history:** every note given on a draft is kept in `copy_feedback`, including ones not saved as rules, next to the email it was about. It shows which corrections come up most and should become rules or prompt changes.
-- **Caveat:** Apple Mail Privacy Protection inflates open rates. Reply rate and meetings (§12) are the honest signals. Moving the unlock to reply rate is a settings change.
+- **Caveat:** opens were dropped with Instantly (Apple Mail Privacy Protection made them unreliable anyway, and a pixel hurts deliverability). Reply rate and meetings (§12) are the signals.
 
 ---
 
@@ -311,38 +313,43 @@ Goal from the Build Plan: 3 calls a day plus email in under 30 minutes.
 
 ---
 
-## 11. Sending, stats and scheduler
+## 11. Sending, inbox and scheduler
 
-### Instantly (`src/lib/outreach/instantly-client.ts`, sending built)
-- **Domain:** send only from **getobatek.com**, never obatek.net.
-- **Campaign setup in Instantly** (one per vertical plus `default`; at least `default`):
-  - Step 1: subject `{{subject_1}}`, body `{{body_1}}`.
-  - Step 2 (3 business days later): body `{{body_2}}`, subject left blank so it threads as a reply.
-  - Step 3 (5 business days after that): body `{{body_3}}`, subject blank.
-  - Footer: your name, OBATEK, the mailing address, and Instantly's unsubscribe link.
-  - Schedule: weekdays, recipient's business hours.
-  - Put the IDs in settings: `UPDATE outreach_settings SET value = '{"default":"<campaign id>"}'::jsonb WHERE key = 'instantly_campaigns';`
-  - Bodies arrive HTML-escaped with `<br>` line breaks (`instantly_body_format` = `html`). If the campaign is set to plain text only, set it to `text`.
-- **Send** (`/api/outreach/send`, one email per request, from **Send N approved** in the Write step):
-  - Re-checks server-side: `sending_paused`, `daily_send_cap`, suppression, CASL and the cooldown (a fail marks the email `blocked`).
-  - Adds the lead with `POST /api/v2/leads` (`skip_if_in_workspace: true`) and `subject_1..3` / `body_1..3` custom variables.
-  - Then stores `instantly_campaign_id` / `instantly_lead_id`, sets `status='sent'` (handed to Instantly), logs an `email` activity, and moves the lead to Contacted with `move_lead`.
-  - Errors: `status='failed'` with `last_error`. Account-wide problems (bad key, no plan, rate limit) stop the batch and leave emails approved.
-  - The run is marked `completed` with a summary when nothing is left to send.
-- **Polling, not webhooks** (the CRM runs locally; `stats.ts`, `stats-sync.ts`, built). It runs when the pop-up opens (`/api/outreach/stats/sync`) and on each scheduler tick.
-  - **What's polled:** sent emails from the last 60 days with `stats_synced_at` older than 15 minutes.
-  - **How:** `POST /api/v2/leads/list` with our `instantly_lead_id`s, 100 at a time.
-  - **Stats stored:** opens (`open_count`, first `opened_at`), `replied_at`, `bounced_at` (status −1) and `unsubscribed_at` (status −2).
-  - **Reply label:** Instantly's `lt_interest_status` when it's set. Otherwise the latest reply (`GET /api/v2/emails?lead=…&email_type=received`) is classified by `reply_model` (`claude-haiku-5-5`), up to 10 a sync. The reply goes in as quoted data, and only one of six labels can come back. Auto-replies are labelled `out_of_office` without calling Claude.
-  - **Timeline:** first open, reply, bounce and unsubscribe are logged as `email` activities, with `meta.external_id = outreach:<email id>:<event>` for dedupe.
-  - **Do-not-contact:** an unsubscribe (Instantly status, or a reply labelled unsubscribe) or a hard bounce adds the address to `suppression_list`.
-  - **Interested replies:** a toast, a "Recent replies" list in the pop-up, and a green stats line on the sent card. You move the lead yourself.
-  - **API key scopes:** `leads:create`, `leads:read` and `emails:read`.
-- **Safety:**
-  - `sending_paused` is the kill switch.
-  - `daily_send_cap` starts at 20 and rises about 5 a week while bounces stay under 2%.
-  - **Auto-pause:** over 5% bounces among the last 7 days' sends pauses sending (after at least 20 sends; at 20 a day, one bounce in 24h would already be 5%). `sending_paused_reason` is shown in the send panel.
-- Check Instantly's current API (v2) docs before implementing, and keep all of it inside this file.
+Sending runs in-house from the **getobatek.com Microsoft 365 mailbox** through Microsoft Graph. Never send from obatek.net.
+
+### Mailbox (stage 7.1)
+- **Entra app** (single tenant): Web redirect `http://localhost:3000/api/outreach/mailbox/callback`, delegated `openid offline_access User.Read Mail.Send Mail.ReadWrite`, admin consent granted. Keys in `.env.local`: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` (note its expiry) and `MAIL_TOKEN_KEY` (`openssl rand -base64 32`).
+- **Connect** in Settings → Sending mailbox: `/api/outreach/mailbox/connect` (team member; random state + PKCE in an httpOnly cookie) → Microsoft sign-in → `/callback` (state checked, code exchanged at the token endpoint, address must be on `sending_domain`).
+- **Token storage** (`src/lib/email/mailbox.ts`, `token-crypto.ts`): the refresh token is AES-256-GCM encrypted with `MAIL_TOKEN_KEY` in `outreach_mailbox`, which has RLS on and no policies; only its SECURITY DEFINER functions touch it. Access tokens live in memory only; Microsoft's rotated refresh token is saved each time. An `invalid_grant` marks the mailbox `needs_reconnect`.
+- `graph-client.ts` holds every Graph call. All use `Prefer: IdType="ImmutableId"`, so a draft keeps its id after it moves to Sent Items.
+
+### Sending (stage 7.2; `sequence.ts`, `mail-message.ts`, `send-queue.ts`)
+- **Queue:** approved emails become `queued` (§6). Each tick sends up to `sends_per_tick` (2) inside `send_window` read in `send_timezone` (America/Toronto, weekdays 08:30–16:30).
+- **Email 1:** created as a draft, then sent (`/me/sendMail` returns no ids). Plain text plus the footer (§7). The ids go in `outreach_messages`.
+- **Follow-ups:** email 2 three business days later, email 3 five after that (`followup_business_days`). Sent with `createReply` on email 1, with the recipient set explicitly (the original sits in our Sent Items). Due follow-ups go before new first emails.
+- **Stops:** a reply, bounce or unsubscribe, the address on the do-not-contact list, or the lead moved out of Contacted. An out-of-office reply only pushes the next step back 3 business days.
+- **Before every send:** paused, the window, the cap, and for email 1 compliance again with fresh data. A message already recorded for that step is never sent twice.
+- **Cap and warm-up:** every message counts (follow-ups and seed copies too), from local midnight. Effective cap = min(`daily_send_cap`, `send_ramp` for the week since `warmup_started_at`): 5 → 10 → 15 → 20 a day. The ramp holds a step back while 7-day bounces are 2% or more, or the latest seed check was spam or missing. `warmup_started_at` is set by the first real send. At 20 a day with 3 steps, steady state is about 7 new leads a day.
+- **Seed checks:** with `seed_addresses` set (your own Gmail/Outlook inboxes), a copy of the day's first email goes to each, daily for the first two weeks, then weekly. Mark where each landed in the pop-up.
+- **Errors:** an account-wide Graph error (401, 403, 429, 503) stops the batch and keeps the queue. A Microsoft block (`ErrorMessageSubmissionBlocked` and similar) pauses sending. Other errors mark that email `failed`, or stop that sequence.
+
+### Inbox sync (stage 7.3; `inbox-events.ts`, `inbox-sync.ts`; replaces Instantly polling)
+- **When:** each tick, before sending, and when the pop-up opens (skipped if read in the last 2 minutes).
+- **What:** `GET /me/messages` in every folder (Junk included) since the watermark minus 5 minutes, skipping drafts and our own mail. The watermark is `outreach_mailbox.inbox_checked_at`.
+- **Matching:** same thread (`conversationId`), then the lead's address (emails sent in the last 60 days), then a colleague at the lead's company domain (never a free-mail domain). Bounce notices match by thread or by an address in the notice.
+- **Bounce notices:** from postmaster/mailer-daemon/MicrosoftExchange…, or an "Undeliverable"-type subject. 5.x.x → `bounced_at`, `hard_bounce` suppression, sequence stopped; 4.x.x is ignored (Microsoft retries). Sender-blocked codes (5.7.233, 5.7.708, 5.1.8, 5.7.705, 5.7.750, 5.7.501, 5.7.511) pause sending at once.
+- **Auto-replies:** by `Auto-Submitted`, `X-Autoreply`, `X-Autorespond`, `Precedence` or an "Automatic reply" subject. They push the next follow-up back.
+- **Replies:** `replied_at`, sequence stopped. Only the new text counts: the quoted email (with our footer) is cut off. "STOP" on its own or unsubscribe wording → `unsubscribed_at`, `unsubscribe` suppression (the lead, and the colleague who asked). Otherwise Haiku (`reply_model`) labels it, up to 10 a sync; a Claude `unsubscribe` label does the same.
+- **Timeline:** reply, bounce and unsubscribe are logged as `email` activities, `meta.external_id = outreach:<email id>:<event>` for dedupe.
+- **Interested replies:** a toast, Recent replies in the pop-up (with a **Do not contact** button for anything missed), and the line on the sent card. You move the lead yourself.
+
+### Safety
+- `sending_paused` is the kill switch. It starts on; turn it off in the SQL editor when warm-up has started.
+- **Auto-pause:** over 5% bounces among the last 7 days' sends (after at least 20 sends), or any sender-blocked bounce code. `sending_paused_reason` shows in the send panel.
+- Microsoft says Exchange Online isn't meant for bulk commercial mail; at 5–20 a day this stays well inside its limits (10,000 recipients a day, 30 a minute). getobatek.com has its own tenant, so a block can't touch obatek.net mail.
+
+### Instantly (stages 6–7, retired)
+Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both were replaced in 7.1–7.3 before any real sends; the `instantly_*` columns stay for history and the settings were removed in 014. Reused from that work: the scheduler, gather, drafting, the reply classifier, suppression and auto-pause.
 
 ### Scheduler (local, built)
 - `scripts/outreach-scheduler.mjs`, run with `npm run outreach:scheduler` in a second terminal next to `npm run dev`. It reads `.env.local` and needs `CRON_SECRET`.
@@ -350,10 +357,11 @@ Goal from the Build Plan: 3 calls a day plus email in under 30 minutes.
 - **Each tick:**
   1. **Start due runs** (`scheduler.ts`), up to 2 a tick. The claim is atomic, so a run can't start twice. A run re-gathers the New stage with the same `gather.ts` as the pop-up, skips leads unticked when it was scheduled and leads below the score threshold, and records blocked leads.
   2. **Write drafts:** up to `cron_drafts_per_tick` (5) for scheduler-started runs, with the same `prepare-email.ts` as the Write step. The daily draft cap still applies.
-  3. **Poll stats** from Instantly.
-- Runs then wait in **Ready for review**; sending stays manual until auto mode (stage 9).
+  3. **Read the inbox** (replies, bounces, opt-outs).
+  4. **Send what's due:** follow-ups, then queued first emails, then seed copies, with settings read again (step 3 may have paused sending).
+- Runs wait in **Ready for review**; approving and queueing stay manual until auto mode (stage 9).
 - The tick uses the service-role client (`src/lib/supabase/admin.ts`, needs `SUPABASE_SERVICE_ROLE_KEY`).
-- The laptop must be awake; a run that comes due while it's asleep fires on wake, because the scheduler ticks once at start.
+- The laptop must be awake; anything that came due while it slept goes on wake, because the scheduler ticks once at start.
 - **Later:** Supabase `pg_cron` + `pg_net` call the same route.
 
 ---
@@ -369,7 +377,7 @@ Goal from the Build Plan: 3 calls a day plus email in under 30 minutes.
 - **Meetings:** `meetings` rows for that lead after the first touch.
 - **Supporting metrics:**
   - leads sourced and qualified per week (`lead_source`, `score ≥ threshold`, `created_at`)
-  - reply and bounce rate (per sending domain once there's more than one)
+  - reply and bounce rate (per sending mailbox once there's more than one)
   - calls per day and connect rate (`call` activity outcomes)
   - meetings → won deals
 - **Cost per qualified lead:** Places + PageSpeed + Claude calls are counted per sourcing run (an open question in the Build Plan). Log the call counts in the sourcing response, then work out the cost by hand from current pricing.
@@ -380,13 +388,16 @@ Goal from the Build Plan: 3 calls a day plus email in under 30 minutes.
 
 Week 3's first sends need 2–3 weeks of warm-up, so this has to start in Week 1.
 
-- [ ] Buy **getobatek.com** and redirect it to obatek.net
-- [ ] Mailbox on getobatek.com (Google Workspace or similar)
-- [ ] DNS: SPF, DKIM, DMARC (`p=none` with reporting, tighten later)
-- [ ] Connect to Instantly and start warm-up
-- [ ] Mailing address for footers (a PO box or virtual mailbox is fine)
-- [ ] Instantly campaigns per vertical + default; put the IDs in settings
+- [x] Buy **getobatek.com** (GoDaddy) and redirect it to obatek.net
+- [x] **Microsoft 365** mailbox on getobatek.com, in its own tenant (separate from obatek.net)
+- [x] DNS: MX, SPF, DKIM (on), DMARC (`p=none` with reports to the mailbox; move to `p=quarantine` once reports are clean)
+- [x] Entra app registered; mailbox connected in Settings
+- [ ] `MAIL_TOKEN_KEY`, `OBATEK_MAILING_ADDRESS` in `.env.local` (a PO box or virtual mailbox is fine for the address)
+- [ ] Add your own Gmail/Outlook inboxes to `seed_addresses`; send some real 1:1 mail from the mailbox and get replies
+- [ ] Turn `sending_paused` off; the ramp starts at 5 a day with the first send
 - [ ] Google Cloud project with the Places API (New) + PageSpeed enabled; keys in `.env.local`
+
+Authenticated SMTP isn't needed: Graph doesn't use it.
 
 The Gmail account (obatekoutreach@gmail.com) is **not** used for sending.
 
@@ -408,13 +419,17 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   templates.ts         ✅ # fill the 3-email template, author tracking (browser-safe)
   run-audit.ts         ✅ # full site check for one lead, shared by audit + prepare
   examples.ts          # winner selection + stats
-  instantly-client.ts  ✅ # create lead, list lead stats, latest reply
-  sending.ts           ✅ # custom variables, campaign choice
+  graph-client.ts      ✅ # every Microsoft Graph call: send, threaded reply, read the mailbox
+  mail-message.ts      ✅ # plain text + required footer
+  sequence.ts          ✅ # send window, business days, warm-up cap, what's due (pure)
+  send-queue.ts        ✅ # send due follow-ups and queued emails, seed copies, test send
+  inbox-events.ts      ✅ # bounce / auto-reply / reply, opt-out wording, matching (pure)
+  inbox-sync.ts        ✅ # read the mailbox, label replies, suppress, auto-pause
+  sending.ts           ✅ # queue result type
   gather.ts            ✅ # source-stage leads + compliance + score (pop-up and scheduler)
   prepare-email.ts     ✅ # one draft: audit refresh, Claude, template (Write step and scheduler)
   scheduler.ts         ✅ # start due runs, write pending drafts
-  stats.ts             ✅ # what one Instantly poll changes (pure)
-  stats-sync.ts        ✅ # poll, label replies, log events, suppress, auto-pause
+  stats.ts             ✅ # event titles, reply labels, auto-pause rule
   reply-classifier.ts  ✅ # Haiku labels a reply (server only)
   prompts/
     copy-system.md
@@ -423,26 +438,32 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
     obatek-crm.ts      ✅ # pushLeads / fetchExistingContacts / findStageByName (the only DB access; updateStatus comes with stage 6)
 src/lib/api/guards.ts        ✅    # requireTeamMember(), hasValidCronSecret()
 src/lib/supabase/admin.ts    ✅    # service-role client (cron route only)
+src/lib/email/mailbox.ts     ✅    # Microsoft sign-in, token refresh (server only)
+src/lib/email/token-crypto.ts ✅   # AES-256-GCM for the refresh token (server only)
 src/lib/queries/outreach.ts  ✅    # React Query hooks
 src/lib/queries/calls.ts     ✅
 src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
   find-leads-dialog.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
-  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  outreach-stats.tsx
+  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  seed-checks.tsx ✅  mailbox-card.tsx ✅  outreach-stats.tsx
 src/app/api/outreach/
   source/route.ts          ✅ # Places search + dedupe + insert
   audit/route.ts           ✅ # site check (+ optional reviews), one lead
   prepare/route.ts         ✅ # audit refresh + Claude subject/opener, one lead
-  send/route.ts            ✅ # push one approved email, log activity, move lead
-  cron/tick/route.ts        ✅ # due runs + drafts + stats polling (CRON_SECRET)
-  stats/sync/route.ts       ✅ # stats polling when the pop-up opens
+  send/route.ts            ✅ # queue one approved email
+  send/test/route.ts       ✅ # email 1 to the mailbox itself
+  mailbox/connect, mailbox/callback ✅ # Microsoft sign-in for the sending mailbox
+  cron/tick/route.ts        ✅ # due runs + drafts + inbox + sending (CRON_SECRET)
+  stats/sync/route.ts       ✅ # inbox sync when the pop-up opens
 scripts/outreach-scheduler.mjs ✅
 ```
 
 The current `queries/outreach.ts` uses the browser client directly for gather and run creation. That's fine for CRM UI; engine work that runs on the server (source, prepare, send, tick) goes through `adapters/obatek-crm.ts`.
 
-**Environment variables (`.env.local`):** `SUPABASE_SERVICE_ROLE_KEY` (scheduler only), `ANTHROPIC_API_KEY`, `INSTANTLY_API_KEY`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `CRON_SECRET`, `OBATEK_MAILING_ADDRESS`.
+**Environment variables (`.env.local`):** `SUPABASE_SERVICE_ROLE_KEY` (scheduler only), `ANTHROPIC_API_KEY`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `CRON_SECRET`, `OBATEK_MAILING_ADDRESS`. `INSTANTLY_API_KEY` is no longer used.
+
+The legacy Outlook code from the CRM template (`src/lib/oauth/outlook.ts`, `src/lib/email/outlook-sender.ts`, `/api/oauth/outlook`, `/api/email/send`, the compose and connect dialogs) was removed in 7.1: it never saved the refresh token and wrote to tables that don't exist.
 
 ---
 
@@ -454,18 +475,21 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 |---|---|---|---|
 | — | 1 ✅ | `002_outreach.sql`; lead fields in form, sheet and importer | A Lusha CSV imports with website/city/vertical filled |
 | — | 2 ✅ | Pop-up Gather + When; `outreach_runs` | Run now / Schedule both create runs; New leads listed with warnings |
-| 1 | 0 | Phase 0 started (§13) | Warm-up running in Instantly |
+| 1 | 0 | Phase 0 started (§13) | getobatek.com mailbox connected, DKIM passing |
 | — | S ✅ | Security: `003_team_access.sql`, no-access screen, route guards, callback redirect check, safe links (§16) | Only team members see data |
 | 1 | 3 ✅ | `004_sourcing.sql`; `sourcing.ts` + Find leads dialog; `scoring.ts`; score in the Gather step and on lead cards; **Today's calls** with basic briefs and outcome logging | 50+ Ottawa handyman leads in New with scores; call the top 15 by hand |
 | 2 | 4 ✅ | `005_audit.sql`; `audit.ts` (incl. email and owner discovery, SSRF-safe fetch) feeding `signals`; reviews signal; Check sites dialog; site check on the lead sheet; findings in call briefs | 50 real sites audited; 3 calls a day |
 | 3 | 5 ✅ | `009_write_step.sql`; Write step in the pop-up (Start run → drafts, or Review on an active run); Draft all with Claude; edit opener or full emails; approve/skip/undo | 20 drafts approved in the pop-up |
-| 3 | 6 ✅ | `010_send.sql`; Instantly send + move to Contacted | A test run to your own inbox shows the lead in the Instantly campaign and moves it to Contacted |
-| 3 | 7 ✅ | `013_scheduler_stats.sql`; scheduler + Instantly stats polling (opens, replies, bounces, unsubscribes → suppression) | A scheduled run fires on time; opens/replies show in the CRM; then about 20 real emails a day |
+| 3 | 6 ✅ | `010_send.sql`; Instantly send + move to Contacted (Instantly; replaced by 7.1–7.3) | — |
+| 3 | 7 ✅ | `013_scheduler_stats.sql`; scheduler + Instantly stats polling (scheduler kept; Instantly replaced by 7.1–7.3) | A scheduled run fires on time |
+| 3 | 7.1 ✅ | `014_mailbox.sql`; Entra app; connect/reconnect/disconnect; encrypted token; legacy Outlook code removed | "Connected: …@getobatek.com" shows in Settings |
+| 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
+| 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
 | 4 | 8 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
 | later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |
 
-**Before the first real send:** send the full sequence to 2–3 of your own addresses (Gmail, Outlook). Confirm inbox placement, the footer, the unsubscribe link, and that a reply stops the sequence.
+**Before the first real send:** send the full sequence to 2–3 of your own addresses (Gmail, Outlook), with `followup_business_days` set to `[0, 0]` for the test. Confirm inbox placement, the footer, that a reply stops the sequence, and that replying "unsubscribe" adds the address to `suppression_list`. Set `followup_business_days` back to `[3, 5]` after.
 
 ---
 
@@ -477,13 +501,16 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 |---|---|---|---|
 | S1 ✅ | **Open signup + "authenticated" RLS.** Anyone who signs up can read and edit every lead, run and email | `003_team_access.sql`: every policy checks `is_team_member()` (the `team_members` table, edited only in the SQL editor). Non-members see a no-access screen. Also disable public signup in Supabase (Authentication → Sign In / Providers) | now |
 | S2 ✅ | **SSRF from the site audit.** Lead `website` values come from CSVs and Places, and the server fetches them | Only `http`/`https` on ports 80/443. Resolve DNS and reject loopback, private, link-local and metadata addresses (`127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fc00::/7`), checking again after every redirect. Max 3 redirects, 10s timeout, 2 MB body cap. Never send cookies or auth headers. Done in `safe-fetch.ts`: the IP check runs inside the connection's DNS lookup, so a rebinding answer can't slip past it | 4 |
-| S3 | **Prompt injection from scraped pages and replies.** Site text and reply bodies reach Claude | Pass scraped text as quoted data in its own block, stripped of HTML and truncated. The system prompt says to never follow instructions in it. Validate the output: JSON shape, length limits, no URLs or email addresses in the opener/subject. In auto mode, anything that fails validation drops to manual review instead of sending | 5, 6, 8 |
+| S3 | **Prompt injection from scraped pages and replies.** Site text, reply bodies and bounce notices reach the engine | Pass scraped text as quoted data in its own block, stripped of HTML and truncated. The system prompt says to never follow instructions in it. Validate the output: JSON shape, length limits, no URLs or email addresses in the opener/subject. In auto mode, anything that fails validation drops to manual review instead of sending. Received mail is only matched against fixed patterns; the classifier gets the reply's own text in `<reply>` tags and can only return one of six labels; reply text is never rendered | 5, 6, 7.3, 8 |
 | S4 ✅ | **Cron route abuse.** `/api/outreach/cron/tick` starts runs and sends email | `hasValidCronSecret()` in `src/lib/api/guards.ts`: `Authorization: Bearer $CRON_SECRET`, compared with `crypto.timingSafeEqual`. Fails when `CRON_SECRET` is unset. Return 401 with no detail | helper done; route in 6 |
-| S5 ✅ | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `INSTANTLY_API_KEY` and `GOOGLE_PLACES_API_KEY` | 3+ |
+| S5 ✅ | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY` and `GOOGLE_PLACES_API_KEY` | 3+ |
 | S6 ✅ | **Server routes acting for any caller.** `source`, `prepare` and `send` cost money and send email | Each route calls `requireTeamMember()` first (session + `is_team_member()`), and uses that user's client so RLS still applies. Validate the body with zod. Re-check compliance and `sending_paused` server-side on every send; never trust the client's list | 3–6 |
 | S7 ✅ | **Cost runaway** (Places, PageSpeed, Claude) | Sourcing: `places_max_results` per search and `places_daily_lead_cap` new leads per day, checked server-side. Prepare: one lead per call (stage 5) | 3 done; 5 |
 | S8 ✅ | **Rendering untrusted text.** Scraped names, reviews and Claude output appear in the CRM | Render as text through React. No `dangerouslySetInnerHTML`. Links go through `externalUrl()` in `src/lib/utils.ts` (http/https only) | 3+ |
 | S9 ✅ | **Open redirect in the auth callback.** `next` comes from the query string | `safeNextPath()` in the callback route: `next` must start with `/`, not `//` or `/\` | now |
+| S10 ✅ | **Mailbox token theft.** Whoever holds the refresh token can send and read as the mailbox | Delegated permissions only, least scopes, single tenant. Refresh token AES-256-GCM encrypted with `MAIL_TOKEN_KEY`; `outreach_mailbox` has RLS and no policies, and its functions are gated by `is_team_member()` or the service role and return ciphertext only. Access tokens in memory only, never logged or sent to the browser. Disconnect deletes the row. Note the client secret's expiry | 7.1 |
+| S11 ✅ | **OAuth connect flow** | Random state + PKCE verifier in an httpOnly SameSite=Lax cookie scoped to `/api/outreach/mailbox`; exact localhost redirect; team member required; the address must be on `sending_domain`; only fixed error codes go back to the page | 7.1 |
+| S12 ✅ | **Mailbox or tenant restricted by Microsoft** | Pacing (`sends_per_tick`), send window, warm-up ramp, auto-pause on blocked codes and on bounces; getobatek.com in its own tenant so obatek.net mail is unaffected | 7.2–7.3 |
 
 ---
 
@@ -497,4 +524,6 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 - Which CRM the first bigger prospect runs
 - Lusha company-size enrichment for leads whose size stays unknown (costs credits; the Lusha connector is available)
 - A blank country currently blocks email (CASL safety). Places leads always have a country, so this mostly affects old imports
-- `email_accounts` / `email_logs` are used by the Outlook connect/send code but don't exist in the live database. They need their own migration before the Outlook path works
+- The legacy Outlook code (and its `email_accounts` / `email_logs` references) was removed in 7.1
+- getobatek.com's Microsoft 365 was bought through GoDaddy. Admin features worked for this setup; if GoDaddy ever blocks something, move the subscription to Microsoft directly
+- Confirm with a lawyer that reply-to-unsubscribe is enough under CASL before scaling Canadian sends
