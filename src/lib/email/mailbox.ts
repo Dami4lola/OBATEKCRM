@@ -204,11 +204,6 @@ export async function getMailboxAccess(crm: Crm): Promise<MailboxAccess> {
   return { address: row.address, accessToken: cached.accessToken, inboxCheckedAt: row.inbox_checked_at }
 }
 
-export async function setInboxCheckedAt(crm: Crm, at: Date): Promise<void> {
-  const { error } = await crm.rpc('update_outreach_mailbox', { p_inbox_checked_at: at.toISOString() })
-  if (error) throw error
-}
-
 export function forgetMailboxAccess(): void {
   cached = null
 }

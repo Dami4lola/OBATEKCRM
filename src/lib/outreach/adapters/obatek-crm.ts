@@ -19,6 +19,7 @@ import { parseOutreachSettings, type OutreachSettings } from '../settings'
 import { existingContactsFrom, type CandidateLead, type ExistingContacts } from '../sourcing'
 import type { CopyExample } from '../copywriter'
 import { parseSteps } from '../templates'
+import type { SentEmail } from '../inbox-events'
 
 // The engine's only way into the OBATEK CRM database. A webhook or CSV
 // adapter for another CRM would offer these same functions.
@@ -391,43 +392,40 @@ export async function fetchUndraftedEmailIds(crm: Crm, limit: number): Promise<s
   return (data || []).map((row) => row.id)
 }
 
-export type EmailToSync = Pick<
-  OutreachEmail,
-  | 'id'
-  | 'lead_id'
-  | 'run_id'
-  | 'instantly_lead_id'
-  | 'open_count'
-  | 'opened_at'
-  | 'replied_at'
-  | 'reply_class'
-  | 'bounced_at'
-  | 'unsubscribed_at'
-> & { lead: Pick<Lead, 'email' | 'company_name' | 'contact_name'> | null }
+// Emails sent since `since`, with the lead's address and the thread ids
+// of every step, for matching what arrives in the mailbox
+export async function fetchSentForMatching(crm: Crm, since: Date): Promise<SentEmail[]> {
+  const sent: SentEmail[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await crm
+      .from('outreach_emails')
+      .select(
+        'id, lead_id, run_id, sent_at, replied_at, reply_class, bounced_at, unsubscribed_at, sequence_state, next_step, next_step_at, leads(email, company_name, contact_name), outreach_messages(conversation_id)'
+      )
+      .eq('status', 'sent')
+      .gte('sent_at', since.toISOString())
+      .order('sent_at', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    for (const { leads, outreach_messages, ...email } of data || []) {
+      const lead = leads as Pick<Lead, 'email' | 'company_name' | 'contact_name'> | null
+      const messages = (outreach_messages ?? []) as { conversation_id: string | null }[]
+      sent.push({
+        ...email,
+        leadEmail: lead?.email ?? null,
+        company: lead?.company_name || lead?.contact_name || 'A lead',
+        conversationIds: [...new Set(messages.map((m) => m.conversation_id).filter((id): id is string => !!id))],
+      })
+    }
+    if (!data || data.length < PAGE_SIZE) break
+  }
+  return sent
+}
 
-// Sent emails whose stats are older than staleBefore, oldest first
-export async function fetchEmailsToSync(
-  crm: Crm,
-  staleBefore: Date,
-  sentSince: Date,
-  limit: number
-): Promise<EmailToSync[]> {
-  const { data, error } = await crm
-    .from('outreach_emails')
-    .select(
-      'id, lead_id, run_id, instantly_lead_id, open_count, opened_at, replied_at, reply_class, bounced_at, unsubscribed_at, leads(email, company_name, contact_name)'
-    )
-    .eq('status', 'sent')
-    .not('instantly_lead_id', 'is', null)
-    .gte('sent_at', sentSince.toISOString())
-    .or(`stats_synced_at.is.null,stats_synced_at.lt.${staleBefore.toISOString()}`)
-    .order('stats_synced_at', { ascending: true, nullsFirst: true })
-    .limit(limit)
+// Inbox sync watermark (outreach_mailbox, through its gated function)
+export async function setInboxCheckedAt(crm: Crm, at: Date): Promise<void> {
+  const { error } = await crm.rpc('update_outreach_mailbox', { p_inbox_checked_at: at.toISOString() })
   if (error) throw error
-  return (data || []).map(({ leads, ...email }) => ({
-    ...email,
-    lead: leads as EmailToSync['lead'],
-  }))
 }
 
 // Do-not-contact from now on; already listed is fine

@@ -282,7 +282,7 @@ const NAME_STOPWORDS = new Set([
   'the', 'services', 'service',
 ])
 
-const FREE_MAIL_DOMAINS = new Set([
+export const FREE_MAIL_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.ca', 'hotmail.com', 'hotmail.ca',
   'outlook.com', 'live.com', 'live.ca', 'msn.com', 'icloud.com', 'me.com', 'aol.com',
   'rogers.com', 'bell.net', 'sympatico.ca', 'shaw.ca', 'telus.net', 'videotron.ca',

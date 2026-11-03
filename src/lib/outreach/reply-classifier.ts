@@ -3,7 +3,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 import type { ReplyClass } from '@/types/database'
 
-// Sorts a reply Instantly hasn't labelled (§9). Server only: it needs
+// Sorts a reply read from the mailbox (§9). Server only: it needs
 // ANTHROPIC_API_KEY. The reply is someone else's text, so it goes in as
 // quoted data and only one of six labels can come back (§16 S3).
 

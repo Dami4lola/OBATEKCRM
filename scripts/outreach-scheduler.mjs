@@ -1,11 +1,12 @@
 // Runs the outreach scheduler on this laptop (OUTREACH_PLAN.md §11).
 //   npm run outreach:scheduler   (with `npm run dev` running in another terminal)
 // Every 5 minutes it calls the tick route, which starts due runs, writes
-// drafts and pulls opens/replies from Instantly. It ticks once at start, so
-// a run that came due while the laptop slept fires on wake.
+// drafts, reads replies and bounces from the mailbox, and sends what's due.
+// It ticks once at start, so anything that came due while the laptop slept
+// goes on wake.
 
 const INTERVAL_MS = 5 * 60_000
-// A tick drafts a few emails with Claude; give it time
+// A tick drafts a few emails with Claude and sends a few; give it time
 const TIMEOUT_MS = 4 * 60_000
 
 const secret = process.env.CRON_SECRET
@@ -25,15 +26,31 @@ function describe(summary) {
     if (summary.drafting.drafted) parts.push(`${summary.drafting.drafted} drafted`)
     if (summary.drafting.stopped) parts.push(`drafting stopped: ${summary.drafting.stopped}`)
   } else if (summary.drafting) parts.push(summary.drafting)
-  if (typeof summary.stats === 'object') {
-    const s = summary.stats
-    if (s.checked) parts.push(`${s.checked} checked, ${s.updated} updated`)
+  if (typeof summary.inbox === 'object') {
+    const s = summary.inbox
     if (s.newReplies?.length) parts.push(`${s.newReplies.length} new repl${s.newReplies.length === 1 ? 'y' : 'ies'}`)
     if (s.suppressed) parts.push(`${s.suppressed} added to do-not-contact`)
     if (s.paused) parts.push(s.paused)
-    for (const e of s.errors ?? []) parts.push(`stats: ${e}`)
-  } else if (summary.stats) parts.push(summary.stats)
-  for (const key of ['startError', 'draftError', 'statsError']) if (summary[key]) parts.push(`${key}: ${summary[key]}`)
+    for (const e of s.errors ?? []) parts.push(`inbox: ${e}`)
+  }
+  if (typeof summary.sending === 'object') {
+    const s = summary.sending
+    const sent = [
+      s.sent && `${s.sent} first email${s.sent === 1 ? '' : 's'}`,
+      s.followUps && `${s.followUps} follow-up${s.followUps === 1 ? '' : 's'}`,
+      s.seeds && `${s.seeds} seed cop${s.seeds === 1 ? 'y' : 'ies'}`,
+    ].filter(Boolean)
+    if (sent.length) parts.push(`sent ${sent.join(', ')}`)
+    if (s.blocked) parts.push(`${s.blocked} blocked`)
+    if (s.failed) parts.push(`${s.failed} failed`)
+    if (s.stopped) parts.push(`${s.stopped} sequence${s.stopped === 1 ? '' : 's'} stopped`)
+    if (s.paused) parts.push(s.paused)
+    if (s.skipped && s.skipped !== 'Nothing due') parts.push(`not sending: ${s.skipped}`)
+    for (const e of s.errors ?? []) parts.push(`sending: ${e}`)
+  }
+  for (const key of ['startError', 'draftError', 'mailboxError', 'inboxError', 'sendError']) {
+    if (summary[key]) parts.push(`${key}: ${summary[key]}`)
+  }
   return parts.length ? parts.join(' · ') : 'nothing to do'
 }
 

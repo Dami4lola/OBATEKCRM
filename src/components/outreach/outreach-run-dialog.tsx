@@ -23,6 +23,7 @@ import { GatherStep } from './gather-step'
 import { ScheduleStep, type RunTiming } from './schedule-step'
 import { ActiveRuns } from './active-runs'
 import { RecentReplies } from './recent-replies'
+import { SeedChecks } from './seed-checks'
 import { WriteStep } from './write-step'
 
 type Step = 'gather' | 'when' | 'write'
@@ -199,6 +200,7 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
                 }}
               />
               <RecentReplies />
+              <SeedChecks />
             </>
           )}
 

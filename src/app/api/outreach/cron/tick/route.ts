@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hasValidCronSecret } from '@/lib/api/guards'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getMailboxAccess } from '@/lib/email/mailbox'
+import { getMailboxAccess, type MailboxAccess } from '@/lib/email/mailbox'
 import { fetchSettings } from '@/lib/outreach/adapters/obatek-crm'
 import { draftPending, startDueRuns } from '@/lib/outreach/scheduler'
 import { sendDue } from '@/lib/outreach/send-queue'
-import { syncStats } from '@/lib/outreach/stats-sync'
+import { syncInbox } from '@/lib/outreach/inbox-sync'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
 // Called every 5 minutes by scripts/outreach-scheduler.mjs (§11): start due
-// runs, write a few drafts, read stats, then send what's due from the
-// mailbox. Each part runs even if an earlier one fails.
+// runs, write a few drafts, read the mailbox, then send what's due from it.
+// Each part runs even if an earlier one fails.
 export async function POST(request: NextRequest) {
   if (!hasValidCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -46,33 +46,38 @@ export async function POST(request: NextRequest) {
       summary.drafting = 'skipped: ANTHROPIC_API_KEY is not set'
     }
 
-    const instantlyKey = process.env.INSTANTLY_API_KEY
-    if (instantlyKey) {
+    let mailbox: MailboxAccess | null = null
+    try {
+      mailbox = await getMailboxAccess(crm)
+    } catch (error) {
+      summary.mailboxError = errorMessage(error)
+    }
+
+    if (mailbox) {
+      // Replies, bounces and opt-outs first: a reply stops its sequence
+      // before the next send, and a block pauses sending
       try {
-        summary.stats = await syncStats(crm, {
-          apiKey: instantlyKey,
+        summary.inbox = await syncInbox(crm, {
+          mailbox,
           settings,
           canClassify: !!process.env.ANTHROPIC_API_KEY,
           now,
         })
       } catch (error) {
-        summary.statsError = errorMessage(error)
+        summary.inboxError = errorMessage(error)
       }
-    } else {
-      summary.stats = 'skipped: INSTANTLY_API_KEY is not set'
-    }
 
-    // Last, so a reply read above stops its sequence before the next send
-    try {
-      const mailbox = await getMailboxAccess(crm)
-      summary.sending = await sendDue(crm, {
-        mailbox,
-        settings,
-        mailingAddress: process.env.OBATEK_MAILING_ADDRESS,
-        now,
-      })
-    } catch (error) {
-      summary.sendError = errorMessage(error)
+      try {
+        // Fresh: the inbox sync may have just paused sending
+        summary.sending = await sendDue(crm, {
+          mailbox,
+          settings: await fetchSettings(crm),
+          mailingAddress: process.env.OBATEK_MAILING_ADDRESS,
+          now,
+        })
+      } catch (error) {
+        summary.sendError = errorMessage(error)
+      }
     }
 
     return NextResponse.json(summary)

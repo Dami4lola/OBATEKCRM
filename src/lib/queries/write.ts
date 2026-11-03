@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { approvedAuthor, parseSteps, type PrepareEmailResult } from '@/lib/outreach/templates'
 import type { SendEmailResult } from '@/lib/outreach/sending'
-import type { SyncResult } from '@/lib/outreach/stats-sync'
+import type { SyncResult } from '@/lib/outreach/inbox-sync'
 import type {
   CopyFeedback,
   Json,
@@ -13,6 +13,8 @@ import type {
   OutreachEmail,
   OutreachEmailStatus,
   OutreachEmailStep,
+  OutreachMessage,
+  SeedPlacement,
 } from '@/types/database'
 
 export interface RunEmail {
@@ -214,8 +216,9 @@ export function useRemoveCopyRule() {
 }
 
 export interface RecentReply {
-  email: Pick<OutreachEmail, 'id' | 'lead_id' | 'replied_at' | 'reply_class'>
+  email: Pick<OutreachEmail, 'id' | 'lead_id' | 'replied_at' | 'reply_class' | 'unsubscribed_at'>
   company: string
+  address: string | null
 }
 
 const RECENT_REPLY_DAYS = 14
@@ -230,14 +233,14 @@ export function useRecentReplies() {
       const since = new Date(Date.now() - RECENT_REPLY_DAYS * 86_400_000).toISOString()
       const { data, error } = await supabase
         .from('outreach_emails')
-        .select('id, lead_id, replied_at, reply_class, leads(company_name, contact_name)')
+        .select('id, lead_id, replied_at, reply_class, unsubscribed_at, leads(company_name, contact_name, email)')
         .gte('replied_at', since)
         .order('replied_at', { ascending: false })
         .limit(20)
       if (error) throw error
       return (data || []).map(({ leads, ...email }) => {
-        const lead = leads as Pick<Lead, 'company_name' | 'contact_name'> | null
-        return { email, company: lead?.company_name || lead?.contact_name || 'A lead' }
+        const lead = leads as Pick<Lead, 'company_name' | 'contact_name' | 'email'> | null
+        return { email, company: lead?.company_name || lead?.contact_name || 'A lead', address: lead?.email ?? null }
       })
     },
   })
@@ -246,7 +249,7 @@ export function useRecentReplies() {
 export async function requestStatsSync(): Promise<SyncResult> {
   const response = await fetch('/api/outreach/stats/sync', { method: 'POST' })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.error || 'Failed to sync stats from Instantly')
+  if (!response.ok) throw new Error(body.error || 'Failed to read the mailbox')
   return body as SyncResult
 }
 
@@ -282,6 +285,81 @@ export function useDisconnectMailbox() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['outreach', 'mailbox'] })
+    },
+  })
+}
+
+// An opt-out the inbox sync didn't catch: never email this address again,
+// and stop the sequence if it's still running
+export function useAddToDoNotContact() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ emailId, address }: { emailId: string; address: string }) => {
+      const { error } = await supabase
+        .from('suppression_list')
+        .insert({ email: address.trim().toLowerCase(), reason: 'manual' })
+      // Already listed is fine
+      if (error && error.code !== '23505') throw error
+      const { error: stopError } = await supabase
+        .from('outreach_emails')
+        .update({
+          unsubscribed_at: new Date().toISOString(),
+          sequence_state: 'stopped',
+          next_step: null,
+          next_step_at: null,
+          stopped_reason: 'Added to do-not-contact by hand',
+        })
+        .eq('id', emailId)
+        .is('unsubscribed_at', null)
+      if (stopError) throw stopError
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+const SEED_CHECK_DAYS = 7
+
+// Seed-inbox copies from the last week still to be marked
+export function useSeedChecks() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'seed-checks'],
+    queryFn: async (): Promise<OutreachMessage[]> => {
+      const since = new Date(Date.now() - SEED_CHECK_DAYS * 86_400_000).toISOString()
+      const { data, error } = await supabase
+        .from('outreach_messages')
+        .select('*')
+        .eq('kind', 'seed')
+        .is('placement', null)
+        .gte('sent_at', since)
+        .order('sent_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+  })
+}
+
+// Spam holds the warm-up ramp a step back until a later check lands well
+export function useMarkPlacement() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, placement }: { id: string; placement: SeedPlacement }) => {
+      const { error } = await supabase
+        .from('outreach_messages')
+        .update({ placement, placement_checked_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('kind', 'seed')
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['outreach', 'seed-checks'] })
     },
   })
 }

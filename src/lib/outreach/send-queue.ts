@@ -149,7 +149,7 @@ export async function sendDue(
   result.cap = effectiveDailyCap(settings, {
     sent7d: week.sent,
     bounced7d: week.bounced,
-    lastSeedSpam: lastChecked?.placement === 'spam',
+    lastSeedSpam: lastChecked?.placement === 'spam' || lastChecked?.placement === 'missing',
     now,
   })
   const room = result.cap.cap - sentToday

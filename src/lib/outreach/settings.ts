@@ -9,10 +9,8 @@ export interface OutreachSettings {
   send_window: { start: string; end: string; weekdays_only: boolean }
   resequence_cooldown_days: number
   auto_unlock_min_sends: number
-  auto_unlock_open_rate: number
   example_min_sends: number
   example_max_in_prompt: number
-  instantly_campaigns: Record<string, string>
   offer_description: string
   score_weights: ScoreWeights
   score_threshold: number
@@ -29,7 +27,6 @@ export interface OutreachSettings {
   sender_name: string
   copy_model: string
   draft_daily_cap: number
-  instantly_body_format: 'html' | 'text'
   cron_drafts_per_tick: number
   reply_model: string
   // Set when sending was paused automatically (bounces); null otherwise
@@ -70,10 +67,8 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   send_window: { start: '08:30', end: '16:30', weekdays_only: true },
   resequence_cooldown_days: 180,
   auto_unlock_min_sends: 50,
-  auto_unlock_open_rate: 0.5,
   example_min_sends: 10,
   example_max_in_prompt: 5,
-  instantly_campaigns: {},
   offer_description: '',
   score_weights: { pain_signal: 3, staff_size: 2, owner_reachable: 2, target_vertical: 1 },
   score_threshold: 5,
@@ -126,7 +121,6 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   sender_name: 'Dami Ayoade',
   copy_model: 'claude-opus-5-5',
   draft_daily_cap: 300,
-  instantly_body_format: 'html',
   // Each draft is a Claude call of up to ~30s; a tick should finish well
   // inside the scheduler's request timeout
   cron_drafts_per_tick: 5,

@@ -185,14 +185,17 @@ export async function listMessagesSince(
   token: string,
   since: Date
 ): Promise<{ messages: ReceivedMessage[]; more: boolean }> {
-  const params = new URLSearchParams({
+  // %20, not URLSearchParams' "+", for spaces in the OData query
+  const query = Object.entries({
     $filter: `receivedDateTime ge ${since.toISOString()}`,
     $orderby: 'receivedDateTime asc',
     $select: 'id,conversationId,isDraft,subject,receivedDateTime,from,body,internetMessageHeaders',
     $top: '50',
   })
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join('&')
   const messages: ReceivedMessage[] = []
-  let url: string | undefined = `/me/messages?${params.toString()}`
+  let url: string | undefined = `/me/messages?${query}`
 
   for (let page = 0; url && page < MAX_PAGES; page++) {
     const data: GraphPage = await graphRequest<GraphPage>(token, 'GET', url)
