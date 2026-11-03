@@ -97,7 +97,7 @@ export function useCleanupCandidates(enabled: boolean) {
       let uncheckedCount = 0
       const low: Omit<CleanupRow, 'hasHistory'>[] = []
       for (const lead of leads) {
-        const score = scoreLead(lead, settings.score_weights, settings.target_verticals)
+        const score = scoreLead(lead, settings)
         // An unchecked lead's score isn't meaningful yet
         if (!score.painChecked) {
           uncheckedCount++

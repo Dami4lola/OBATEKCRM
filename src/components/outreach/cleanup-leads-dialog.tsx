@@ -40,7 +40,7 @@ import { ScoreBadge } from './score-badge'
 
 function whyLow(lead: Lead): string | null {
   const audit = parseAudit(lead.audit)
-  return audit ? auditFindings(audit)[0] ?? null : null
+  return audit ? auditFindings(audit, lead.vertical)[0] ?? null : null
 }
 
 export function CleanupLeadsDialog() {

@@ -18,7 +18,7 @@ interface LeadCardProps {
 
 export function LeadCard({ lead, index, onClick, settings }: LeadCardProps) {
   const score = settings
-    ? scoreLead(lead, settings.score_weights, settings.target_verticals)
+    ? scoreLead(lead, settings)
     : null
 
   return (

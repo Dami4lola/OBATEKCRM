@@ -3,6 +3,7 @@ import { safeFetch, SafeFetchError, type SafeResponse } from './safe-fetch'
 import type { ListingInfo, SiteAudit } from './audit-findings'
 import { isGenericEmail } from './cleanup'
 import { extractSizeSignals } from './company-size'
+import { detectAgencyProfile } from './agency'
 
 export * from './audit-findings'
 
@@ -433,6 +434,7 @@ export async function auditSite(input: AuditInput): Promise<SiteAudit> {
   audit.emails_found = extractEmails(allHtml, finalHost)
   audit.owner_name = findOwnerName(allText)
   audit.size_signals = extractSizeSignals(allText)
+  audit.agency = detectAgencyProfile(allHtml, allText)
   audit.seo_issues = seoIssues(home.body, input.city)
   audit.phone_on_homepage = /href\s*=\s*["']?tel:/i.test(home.body) || PHONE_PATTERN.test(homeText)
   audit.perf_score = await perf

@@ -33,9 +33,10 @@ function normalizeNumbers(text: string): string {
     )
 }
 
-// "25+ technicians", "over 60 employees", "our 3 licensed electricians"
+// "25+ technicians", "over 60 employees", "our 3 licensed electricians",
+// "our 8 designers" (agencies)
 const STAFF_PATTERN =
-  /\b(\d{1,4})\s*\+?\s*(?:(?:full[- ]time|licensed|certified|experienced|skilled|trained|dedicated|professional|in-house)\s+)?(employees|staff(?:\s+members)?|technicians|techs|team members|professionals|electricians|plumbers|installers|tradespeople|tradesmen|crew members|workers|carpenters|roofers)\b/gi
+  /\b(\d{1,4})\s*\+?\s*(?:(?:full[- ]time|licensed|certified|experienced|skilled|trained|dedicated|professional|in-house)\s+)?(employees|staff(?:\s+members)?|technicians|techs|team members|professionals|electricians|plumbers|installers|tradespeople|tradesmen|crew members|workers|carpenters|roofers|designers|developers|marketers|specialists|strategists|experts)\b/gi
 const TEAM_OF_PATTERN = /\bteam of\s+(?:over\s+|more than\s+|nearly\s+|about\s+)?(\d{1,4})\b/gi
 const LOCATIONS_PATTERN =
   /\b(\d{1,2})\s+(?:convenient\s+|service\s+|retail\s+)?(locations|branches|offices|service cent(?:re|er)s|showrooms)\b/gi

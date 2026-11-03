@@ -83,7 +83,7 @@ export function useCallList(enabled: boolean) {
           .filter((lead) => lead.phone?.trim() && !openCallLeadIds.has(lead.id))
           .map((lead) => ({
             lead,
-            score: scoreLead(lead, settings.score_weights, settings.target_verticals),
+            score: scoreLead(lead, settings),
           }))
           .sort(
             (a, b) =>

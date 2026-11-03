@@ -42,6 +42,8 @@ export interface OutreachSettings {
   warmup_started_at: string | null
   seed_addresses: string[]
   auto_unlock_reply_rate: number
+  // Staff counts that earn the size points, by vertical (015)
+  staff_range: Record<string, [number, number]>
 }
 
 export interface TemplateStep {
@@ -57,7 +59,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql and 014_mailbox.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql and 015_agencies.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -72,7 +74,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   offer_description: '',
   score_weights: { pain_signal: 3, staff_size: 2, owner_reachable: 2, target_vertical: 1 },
   score_threshold: 5,
-  target_verticals: ['handyman'],
+  target_verticals: ['handyman', 'agency'],
   call_list_size: 3,
   auto_unlock_min_days: 14,
   places_max_results: 60,
@@ -81,7 +83,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   audit_daily_cap: 800,
   generic_email_keep_score: 7,
   small_business_max_staff: 50,
-  // Mirrors 009_write_step.sql and 012_car_dealer_template.sql; edit there (or in the settings table)
+  // Mirrors 009_write_step.sql, 012_car_dealer_template.sql and 015_agencies.sql; edit there (or in the settings table)
   email_templates: {
     default: [
       {
@@ -117,6 +119,23 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
         body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
       },
     ],
+    agency: [
+      {
+        step: 1,
+        subject: '{{subject}}',
+        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK, a small automation shop. We set up the back office for agencies like {{company}}: instant follow-up on every new inquiry, an AI receptionist for your sales line during client calls, and discovery calls booked straight onto your calendar.\n\nWould a free one-page audit of how {{company}} handles new inquiries be useful?\n\n{{sender_name}}",
+      },
+      {
+        step: 2,
+        subject: 're: {{subject}}',
+        body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If a good lead ever went cold while the team was heads-down on client work, the free audit would show where {{company}}'s inquiries slip. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
+      },
+      {
+        step: 3,
+        subject: 're: {{subject}}',
+        body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
+      },
+    ],
   },
   sender_name: 'Dami Ayoade',
   copy_model: 'claude-opus-5-5',
@@ -134,6 +153,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   warmup_started_at: null,
   seed_addresses: [],
   auto_unlock_reply_rate: 0.05,
+  staff_range: { default: [2, 15], agency: [2, 20] },
 }
 
 // Missing or unknown keys fall back to the defaults

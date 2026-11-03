@@ -47,7 +47,7 @@ export async function gatherLeads(
 
   const rows = leads.map((lead) => {
     const leadWarnings = warnings.get(lead.id) || []
-    const score = scoreLead(lead, settings.score_weights, settings.target_verticals)
+    const score = scoreLead(lead, settings)
     // Only judge leads that have been checked for pain signals
     const belowThreshold = score.painChecked && score.score < settings.score_threshold
     if (belowThreshold) {

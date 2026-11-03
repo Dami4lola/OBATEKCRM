@@ -14,6 +14,9 @@ const CALL_QUESTIONS: [PainSignal, string][] = [
 const DEFAULT_QUESTION =
   'How are you keeping track of jobs and quotes right now: a spreadsheet, texts, something else?'
 
+// Agencies: their own new-business inquiries, not their clients' sites
+const AGENCY_QUESTION = 'When someone fills in your contact form at 9pm, what happens next?'
+
 export const CALL_OUTCOMES = [
   { value: 'no_answer', label: 'No answer' },
   { value: 'voicemail', label: 'Left voicemail' },
@@ -35,9 +38,11 @@ type BriefLead = Pick<
   | 'google_rating'
   | 'google_review_count'
   | 'audit'
+  | 'vertical'
 >
 
-export function callQuestion(painSignals: PainSignal[]): string {
+export function callQuestion(painSignals: PainSignal[], vertical?: string | null): string {
+  if (vertical === 'agency') return AGENCY_QUESTION
   return CALL_QUESTIONS.find(([signal]) => painSignals.includes(signal))?.[1] ?? DEFAULT_QUESTION
 }
 
@@ -70,7 +75,7 @@ export function buildCallBrief(lead: BriefLead, score: LeadScore): string {
       : 'Not checked yet'
 
   const audit = parseAudit(lead.audit)
-  const site = audit ? auditFindings(audit).slice(0, 3).join('; ') : null
+  const site = audit ? auditFindings(audit, lead.vertical).slice(0, 3).join('; ') : null
 
   return [
     `Who: ${personToAskFor(lead)}`,
@@ -78,7 +83,7 @@ export function buildCallBrief(lead: BriefLead, score: LeadScore): string {
     `Phone: ${lead.phone ?? 'none'}`,
     `Pain: ${pain}`,
     ...(site ? [`Site: ${site}`] : []),
-    `Ask: ${callQuestion(score.painSignals)}`,
+    `Ask: ${callQuestion(score.painSignals, lead.vertical)}`,
     `Score: ${score.score}/${score.max}`,
   ].join('\n')
 }

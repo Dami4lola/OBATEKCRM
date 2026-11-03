@@ -20,6 +20,7 @@ export const VERTICALS = [
   'landscaping',
   'fleet_trucking',
   'car_dealer',
+  'agency',
 ]
 
 export const leadSchema = z.object({
@@ -91,6 +92,8 @@ const VERTICAL_KEYWORDS: [string, string[]][] = [
   ['handyman', ['handyman', 'home repair', 'home improvement', 'property maintenance']],
   ['landscaping', ['landscap', 'lawn']],
   ['fleet_trucking', ['truck', 'fleet', 'freight']],
+  // Lusha's "Marketing & Advertising"; trades are matched first
+  ['agency', ['agency', 'marketing', 'advertising', 'web design', 'web development', 'seo', 'ppc']],
 ]
 
 // "Plumbing & Heating Contractors" -> "plumbing"; unknown industries kept as typed

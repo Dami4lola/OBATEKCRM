@@ -1,6 +1,7 @@
 import type { Json, Lead, LeadUpdate, OutreachHook } from '@/types/database'
 import { parseSignals, type LeadSignals } from './scoring'
 import type { SizeSignals } from './company-size'
+import { describeAgency, type AgencyProfile } from './agency'
 
 // Audit results and what they mean, without the fetching (audit.ts), so
 // browser code like the lead sheet can use them too
@@ -42,6 +43,7 @@ export interface SiteAudit {
   pages_checked: string[]
   slow_callback_reviews: string[] | null // matching review snippets; null = not checked
   size_signals?: SizeSignals // team-size wording on the site; missing on older audits
+  agency?: AgencyProfile // services, GoHighLevel, off-target; used for agency leads only
   errors: string[]
 }
 
@@ -80,7 +82,16 @@ export function hasNoSite(audit: SiteAudit): boolean {
   return audit.dead_site || audit.website_status === 'none_confirmed'
 }
 
-export function primaryHook(audit: SiteAudit, now = new Date()): OutreachHook {
+// Agencies build and rank websites for a living: their own site is never
+// the angle, only how they handle new inquiries
+const AGENCY_HOOKS: OutreachHook[] = ['no_site', 'no_booking', 'request_only', 'generic']
+
+export function primaryHook(audit: SiteAudit, vertical?: string | null, now = new Date()): OutreachHook {
+  if (vertical === 'agency') {
+    const hook = primaryHook(audit, null, now)
+    if (AGENCY_HOOKS.includes(hook)) return hook
+    return audit.booking_tool ? 'generic' : 'request_only'
+  }
   if (hasNoSite(audit)) return 'no_site'
   // Website unknown: never claim they don't have one
   if (!audit.has_site) return 'generic'
@@ -102,7 +113,7 @@ export function primaryHook(audit: SiteAudit, now = new Date()): OutreachHook {
 }
 
 // Pain signals for scoring, merged over what's already on the lead
-export function auditSignals(audit: SiteAudit, existing: LeadSignals): LeadSignals {
+export function auditSignals(audit: SiteAudit, existing: LeadSignals, vertical?: string | null): LeadSignals {
   const readable = audit.has_site && !audit.dead_site && audit.mobile_viewport !== null
   const signals: LeadSignals = {
     ...existing,
@@ -114,14 +125,34 @@ export function auditSignals(audit: SiteAudit, existing: LeadSignals): LeadSigna
   if (audit.slow_callback_reviews !== null) {
     signals.slow_callback_reviews = audit.slow_callback_reviews.length > 0 || undefined
   }
+  // Branding, social-content and enterprise agencies aren't who we're after
+  if (vertical === 'agency' && audit.agency) signals.off_target = !!audit.agency.off_target || undefined
   // Drop false/undefined so the stored JSON only lists signals that apply
   return Object.fromEntries(
     Object.entries(signals).filter(([, value]) => value !== undefined && value !== false)
   ) as LeadSignals
 }
 
+// What the site check says about an agency: their services, and how new
+// inquiries reach them. Never their site's speed, SEO or design.
+function agencyFindings(audit: SiteAudit): string[] {
+  const findings: string[] = []
+  if (audit.agency) {
+    findings.push(describeAgency(audit.agency))
+    findings.push(...audit.agency.evidence.filter((line) => !line.startsWith('Offers ')))
+  }
+  if (audit.booking_tool) findings.push(`Books calls online with ${audit.booking_tool}`)
+  else if (audit.has_contact_form || audit.has_booking) findings.push('New inquiries come in through a form, no instant booking seen')
+  if (audit.emails_found.length) findings.push(`Email on site: ${audit.emails_found[0]}`)
+  if (audit.owner_name) findings.push(`Owner (from site, unverified): ${audit.owner_name}`)
+  return findings
+}
+
 // Plain-English findings for the lead sheet and call brief
-export function auditFindings(audit: SiteAudit): string[] {
+export function auditFindings(audit: SiteAudit, vertical?: string | null): string[] {
+  if (vertical === 'agency' && audit.has_site && !audit.dead_site && audit.website_status !== 'unknown') {
+    return agencyFindings(audit)
+  }
   const findings: string[] = []
   if (audit.website_status === 'unknown') {
     return ['Website unknown: none on file and no matching Google listing']
@@ -155,13 +186,13 @@ export function auditFindings(audit: SiteAudit): string[] {
 // What a finished audit changes on the lead. Only fills gaps: never
 // overwrites an email or owner someone entered by hand.
 export function leadUpdatesFromAudit(
-  lead: Pick<Lead, 'email' | 'email_source' | 'owner_name' | 'contact_name' | 'company_name' | 'signals'>,
+  lead: Pick<Lead, 'email' | 'email_source' | 'owner_name' | 'contact_name' | 'company_name' | 'signals' | 'vertical'>,
   audit: SiteAudit
 ): LeadUpdate {
   const updates: LeadUpdate = {
     audit: audit as unknown as Json,
     audited_at: audit.audited_at,
-    signals: auditSignals(audit, parseSignals(lead.signals)) as Json,
+    signals: auditSignals(audit, parseSignals(lead.signals), lead.vertical) as Json,
   }
 
   const current = lead.email?.trim().toLowerCase()

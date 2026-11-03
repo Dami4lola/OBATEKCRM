@@ -82,7 +82,7 @@ function quoted(text: string, max = 300): string {
 }
 
 export function leadBrief({ lead, audit, hook, offer, examples, revision }: DraftInput): string {
-  const findings = audit ? auditFindings(audit).filter((f) => !f.startsWith('Owner (from site')) : []
+  const findings = audit ? auditFindings(audit, lead.vertical).filter((f) => !f.startsWith('Owner (from site')) : []
   const reviews = audit?.slow_callback_reviews ?? []
   const lines = [
     '<lead>',
@@ -90,7 +90,11 @@ export function leadBrief({ lead, audit, hook, offer, examples, revision }: Draf
     `First name to greet: ${firstName(lead)}`,
     lead.job_title ? `Their role: ${quoted(lead.job_title, 80)}` : null,
     lead.city ? `City: ${quoted(lead.city, 60)}` : null,
-    lead.vertical ? `Trade: ${lead.vertical.replace(/_/g, ' ')}` : null,
+    lead.vertical === 'agency'
+      ? 'Business type: marketing agency'
+      : lead.vertical
+        ? `Trade: ${lead.vertical.replace(/_/g, ' ')}`
+        : null,
     lead.google_rating != null
       ? `Google rating: ${lead.google_rating} from ${lead.google_review_count ?? 0} reviews`
       : null,

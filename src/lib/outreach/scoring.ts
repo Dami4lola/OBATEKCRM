@@ -1,5 +1,6 @@
 import type { Json, Lead } from '@/types/database'
-import type { ScoreWeights } from './settings'
+import type { OutreachSettings } from './settings'
+import { describeAgency, type AgencyProfile } from './agency'
 
 // Pain signals saved on leads.signals by sourcing (and, from stage 4, the audit)
 export interface LeadSignals {
@@ -9,9 +10,11 @@ export interface LeadSignals {
   no_booking?: boolean
   slow_callback_reviews?: boolean
   hiring?: boolean
+  // An agency that isn't the target: branding, social content, enterprise
+  off_target?: boolean
 }
 
-export type PainSignal = Exclude<keyof LeadSignals, 'checked_at'>
+export type PainSignal = Exclude<keyof LeadSignals, 'checked_at' | 'off_target'>
 
 export const PAIN_SIGNAL_LABELS: Record<PainSignal, string> = {
   no_site: 'No real website',
@@ -45,19 +48,25 @@ export function parseSignals(value: Json | null | undefined): LeadSignals {
   for (const key of Object.keys(PAIN_SIGNAL_LABELS) as PainSignal[]) {
     if (record[key] === true) signals[key] = true
   }
+  if (record.off_target === true) signals.off_target = true
   return signals
 }
 
 type ScoredLead = Pick<
   Lead,
-  'staff_size' | 'job_title' | 'owner_name' | 'email' | 'phone' | 'vertical' | 'signals'
+  'staff_size' | 'job_title' | 'owner_name' | 'email' | 'phone' | 'vertical' | 'signals' | 'audit'
 >
 
-export function scoreLead(
-  lead: ScoredLead,
-  weights: ScoreWeights,
-  targetVerticals: string[]
-): LeadScore {
+export type ScoreSettings = Pick<OutreachSettings, 'score_weights' | 'target_verticals' | 'staff_range'>
+
+function agencyProfile(audit: Lead['audit']): AgencyProfile | null {
+  if (!audit || typeof audit !== 'object' || Array.isArray(audit)) return null
+  const agency = (audit as Record<string, unknown>).agency
+  return agency && typeof agency === 'object' ? (agency as AgencyProfile) : null
+}
+
+export function scoreLead(lead: ScoredLead, settings: ScoreSettings): LeadScore {
+  const weights = settings.score_weights
   const signals = parseSignals(lead.signals)
   const painSignals = (Object.keys(PAIN_SIGNAL_LABELS) as PainSignal[]).filter(
     (key) => signals[key]
@@ -72,7 +81,9 @@ export function scoreLead(
     })
   }
 
-  if (lead.staff_size != null && lead.staff_size >= 2 && lead.staff_size <= 15) {
+  // 2-15 for trades, 2-20 for agencies (staff_range)
+  const [minStaff, maxStaff] = (lead.vertical && settings.staff_range[lead.vertical]) || settings.staff_range.default || [2, 15]
+  if (lead.staff_size != null && lead.staff_size >= minStaff && lead.staff_size <= maxStaff) {
     breakdown.push({ reason: `${lead.staff_size} staff`, points: weights.staff_size })
   }
 
@@ -82,13 +93,25 @@ export function scoreLead(
     breakdown.push({ reason: 'Owner reachable directly', points: weights.owner_reachable })
   }
 
-  if (lead.vertical && targetVerticals.includes(lead.vertical)) {
-    breakdown.push({ reason: 'Target vertical', points: weights.target_vertical })
+  if (lead.vertical && settings.target_verticals.includes(lead.vertical)) {
+    const agency = lead.vertical === 'agency' ? agencyProfile(lead.audit) : null
+    breakdown.push({
+      reason: agency ? describeAgency(agency) : 'Target vertical',
+      points: weights.target_vertical,
+    })
+  }
+
+  const max = weights.pain_signal + weights.staff_size + weights.owner_reachable + weights.target_vertical
+
+  // Below zero whatever else it has: starts unticked, offered by Clean up
+  if (signals.off_target) {
+    const kind = agencyProfile(lead.audit)?.off_target
+    breakdown.push({ reason: `Off-target agency${kind ? ` (${kind})` : ''}`, points: -max })
   }
 
   return {
     score: breakdown.reduce((sum, item) => sum + item.points, 0),
-    max: weights.pain_signal + weights.staff_size + weights.owner_reachable + weights.target_vertical,
+    max,
     breakdown,
     painSignals,
     painChecked: !!signals.checked_at,

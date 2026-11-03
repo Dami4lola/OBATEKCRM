@@ -18,6 +18,8 @@ The system supports the sales routine; it does not replace it. Each stage runs l
 
 Start with small handyman and home-repair businesses (2–10 staff) running jobs out of spreadsheets and texts. Every warm lead so far has come from this segment; larger HVAC and electrical firms often already pay for field-service software and have an office manager screening calls. Expand to bigger clients once this segment converts reliably.
 
+Second target, run alongside: marketing agencies with 2–20 staff in the Eastern and Central US (NY, FL, TX, IL, GA, the Carolinas) doing web design, local SEO, GoHighLevel or local Google Ads, not branding, social content or enterprise work. The offer is their own back office: instant follow-up on new inquiries, an AI receptionist for the sales line, discovery calls booked onto the calendar. Sources: Google Maps (in the tool) and Lusha; Clutch and UpCity by hand.
+
 | Signal | Where it comes from | Why it matters |
 | --- | --- | --- |
 | Hiring an office admin or dispatcher | Job boards | Coordination pain right now |
@@ -141,6 +143,7 @@ Each week's build feeds that same week's outreach, so the system is tested on re
 - [x] Week 3 build, part 2: Instantly sending (approved emails → campaign, lead → Contacted) (replaced by part 4)
 - [x] Week 3 build, part 3: scheduler + reply/open tracking (scheduler kept; tracking replaced by part 4)
 - [x] Week 3 build, part 4: in-house sending from Microsoft 365: connect the mailbox, threaded follow-ups, inbox sync for replies, bounces and unsubscribes, warm-up ramp. Replaces Instantly
+- [x] Agencies as a second target: Google Maps batch search across the target states, site check for services, GoHighLevel and off-target agencies, agency template and openers
 - [ ] Week 4: hiring-signal feed, Jo case study, audit PDF offer, meetings-per-100 metric
 - [ ] Then: learning loop + auto mode (after 2–3 weeks of approved sends), generic webhook adapter, first enterprise CRM adapter, enterprise features per deal
 

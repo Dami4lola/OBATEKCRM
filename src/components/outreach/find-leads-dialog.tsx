@@ -23,8 +23,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { VERTICALS } from '@/lib/validations/lead'
-import { useSourceLeads } from '@/lib/queries/outreach'
+import { useOutreachSettings, useSourceLeads } from '@/lib/queries/outreach'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
+import { AgencyBatchSearch } from './agency-batch-search'
 
 const RESULT_OPTIONS = [20, 40, 60]
 
@@ -41,8 +42,11 @@ export function FindLeadsDialog() {
   const [country, setCountry] = useState('CA')
   const [maxResults, setMaxResults] = useState(20)
   const [result, setResult] = useState<SourceLeadsResult | null>(null)
+  // One search, or the agency batch across US states
+  const [mode, setMode] = useState<'single' | 'agencies'>('single')
 
   const sourceLeads = useSourceLeads()
+  const { data: settings } = useOutreachSettings()
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) setResult(null)
@@ -80,7 +84,7 @@ export function FindLeadsDialog() {
           Find leads
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={mode === 'agencies' ? 'sm:max-w-lg' : 'sm:max-w-md'}>
         <DialogHeader>
           <DialogTitle>{result ? 'Leads added' : 'Find leads'}</DialogTitle>
           {!result && (
@@ -91,7 +95,27 @@ export function FindLeadsDialog() {
           )}
         </DialogHeader>
 
-        {result ? (
+        {!result && (
+          <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
+            {(['single', 'agencies'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`flex-1 rounded px-2 py-1 ${mode === m ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground'}`}
+              >
+                {m === 'single' ? 'One search' : 'Agencies (US)'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {mode === 'agencies' && !result ? (
+          <AgencyBatchSearch
+            dailyCap={settings?.places_daily_lead_cap ?? 200}
+            onDone={() => handleOpenChange(false)}
+          />
+        ) : result ? (
           <div className="space-y-3 py-2">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-6 w-6 text-green-600" />

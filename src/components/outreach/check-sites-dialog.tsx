@@ -81,8 +81,8 @@ export function CheckSitesDialog() {
           foundOnGoogle:
             p.foundOnGoogle + (audit?.listing && audit.website_status === 'found' ? 1 : 0),
           unknownSite: p.unknownSite + (audit?.website_status === 'unknown' ? 1 : 0),
-          noSite: p.noSite + (audit && primaryHook(audit) === 'no_site' ? 1 : 0),
-          noBooking: p.noBooking + (audit && primaryHook(audit) === 'no_booking' ? 1 : 0),
+          noSite: p.noSite + (audit && primaryHook(audit, lead.vertical) === 'no_site' ? 1 : 0),
+          noBooking: p.noBooking + (audit && primaryHook(audit, lead.vertical) === 'no_booking' ? 1 : 0),
           slowCallbacks: p.slowCallbacks + (audit?.slow_callback_reviews?.length ? 1 : 0),
         }
       )

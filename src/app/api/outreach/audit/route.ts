@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       placesKey,
       pagespeedKey: process.env.PAGESPEED_API_KEY || placesKey,
     })
-    const result: AuditLeadResult = { lead: updated, audit, hook: primaryHook(audit), skipped: null }
+    const result: AuditLeadResult = { lead: updated, audit, hook: primaryHook(audit, updated.vertical), skipped: null }
     return NextResponse.json(result)
   } catch (error) {
     console.error('Site audit error:', error)

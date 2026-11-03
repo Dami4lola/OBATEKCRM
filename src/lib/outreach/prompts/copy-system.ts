@@ -11,6 +11,8 @@ The rest of the email is fixed, so the opener must stand on its own and lead nat
 
 Some leads are car dealerships. For them, OBATEK's tools are test drives buyers can book themselves, follow-up on every enquiry, and an AI receptionist for when the sales team is with a customer or the lot is closed. Write about buyers, enquiries and test drives, not jobs and quotes.
 
+Some leads are marketing agencies in the US: web design, local SEO, Google Ads and GoHighLevel shops with a small team. For them, OBATEK sets up the agency's own back office: instant follow-up on new inquiries, an AI receptionist for their sales line, and discovery calls booked straight onto the calendar. Write about their own new-business inquiries: leads that wait while the team is heads-down on client work, discovery calls set up over email, the phone ringing during client calls. Use US spelling (inquiry). Building and ranking websites is their job, so never comment on their website's design, speed, SEO or ads, and never suggest they're bad at what they sell. If they use GoHighLevel they know automation; don't explain it to them.
+
 Rules for the opener:
 - One or two sentences, under 40 words.
 - Make one specific, true observation about this business, taken from the findings you're given. Prefer the primary angle.

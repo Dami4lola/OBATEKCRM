@@ -17,6 +17,8 @@ The engine starts in **manual mode**: you approve every email. The best performe
 
 **Starting ICP:** handyman and home-repair businesses with 2–10 staff that run jobs out of spreadsheets and texts. Bigger HVAC and electrical firms come later.
 
+**Second target (stage 7.4):** marketing agencies with 2–20 staff in the Eastern and Central US (NY, FL, TX, IL, GA, the Carolinas): web design, local SEO, GoHighLevel and local Google Ads shops. Not branding, social-content or enterprise agencies. The offer is the agency's own back office: instant follow-up on new inquiries, an AI receptionist for the sales line, discovery calls booked onto the calendar.
+
 ---
 
 ## 1. How this differs from the Build Plan's architecture
@@ -85,6 +87,7 @@ A **Find leads** dialog has inputs for vertical, city and max results. It pulls 
   - Lusha fills gaps only, with `email_source='lusha'`.
 - **Staff size:** Places does not return it. It comes from Lusha, LinkedIn or manual entry. Until it's known, the lead scores 0 for size.
 - **Lusha** CSVs still import through the existing importer (stage 1).
+- **Agencies (stage 7.4, `agency.ts`):** Find leads → **Agencies (US)** runs one search per agency type ("web design agency", "local SEO agency", "Google Ads agency", "marketing agency") per city in the ticked states (21 preset cities in NY, FL, TX, IL, GA, NC, SC), one at a time through the same route, with `vertical='agency'` and `country='US'`. It stops when the daily lead cap is reached; for 300+ in one go, raise `places_daily_lead_cap` first or run it on two days. **Clutch and UpCity** are used by hand only: both forbid scraping and block bots. **Lusha** exports (Marketing & Advertising, 2–10 / 11–50 staff, by state) import as `agency` through the usual importer.
 - **Hiring signal (Week 4):** a job-board feed that flags businesses hiring an office admin or dispatcher. Which boards to use is an open question in the Build Plan.
 
 Env: `GOOGLE_PLACES_API_KEY`. It can be the same Google Cloud project as `PAGESPEED_API_KEY`.
@@ -102,9 +105,10 @@ Default weights, from the Build Plan, stored in `outreach_settings.score_weights
 | Signal | Points | Source |
 |---|---|---|
 | Pain signal: no site, dead site, no online booking, reviews mentioning slow callbacks, or hiring admin/dispatch | +3 (once, however many apply) | audit, Places reviews, job feed |
-| 2–15 staff | +2 | `staff_size` |
+| 2–15 staff (agencies 2–20, `staff_range`) | +2 | `staff_size` |
 | Owner reachable directly | +2 | owner name found on the About page or LinkedIn **and** a direct email or phone; or `job_title` matches owner/founder/president/principal |
-| Handyman or home-repair vertical | +1 | `vertical = 'handyman'` |
+| Target vertical | +1 | `vertical` in `target_verticals` (`handyman`, `agency`); agencies show their services, e.g. "Agency: web design, local SEO, GoHighLevel" |
+| Off-target agency (branding, social content, enterprise) | −max | `signals.off_target`, set by the site check for agency leads: they score below zero, start unticked and are offered by Clean up |
 
 - **Threshold:** `outreach_settings.score_threshold`, default **5**. This is a placeholder; the Build Plan lists it as an open question.
 - In the pop-up's Gather step, leads below the threshold show a **non-blocking** warning and start **unticked**. You can still tick them. This only applies once a lead has been checked for pain signals (`signals.checked_at`). Imported leads that were never checked show a `?` on their score and aren't unticked.
@@ -155,6 +159,8 @@ Run from **Check sites** (dashboard header: every lead in New not checked in the
 | Basic SEO | `<title>`, meta description, single `<h1>`, city in title or H1 | `seo_issues` |
 | Contact visibility | phone number on homepage | `phone_on_homepage` |
 
+**Agency profile** (`audit.agency`, `agency.ts`): services from the site text (web design, local SEO, Google Ads), **GoHighLevel** from its hosts in the page (`leadconnectorhq.com`, `msgsndr.com`, `*.gohighlevel.com`) or the name, and **off-target**: branding- or social-content-only wording with none of those services, or enterprise wording ("Fortune 500", "enterprise clients"). Team-size wording also counts designers, developers, marketers and specialists. It's stored on every audit but only used for agency leads.
+
 **Request links** ("Book a test drive", "Request a quote", "Trade-in appraisal", "Credit application") are found by link text, or by URL path when the link is an image, and stored in `request_paths`. Many platforms (ZopDealer, Wix forms) load the form itself with JavaScript, so the link is often the only thing the check can see.
 
 The **primary hook** is the first match in this order:
@@ -167,6 +173,8 @@ The **primary hook** is the first match in this order:
 7. `request_only`: contact form only
 8. `seo_local`
 9. `generic`
+
+For **agency** leads the hook is only ever `no_site`, `no_booking`, `request_only` or `generic`, and their findings leave out speed, mobile, footer year and SEO: building and ranking sites is their job, so their own site is never the angle.
 
 `request_only` means requests land in an inbox and someone has to reply. Because the check can miss forms, "not seen" findings are worded as not seen, never as missing (`011_copy_feedback.sql` adds the hook).
 
@@ -264,6 +272,7 @@ No links, no tracking pixel. The inbox sync turns STOP/unsubscribe replies into 
   - Each has 3 steps with `{{first_name}}` (owner, else contact, else "there"), `{{company}}`, `{{opener}}`, `{{subject}}`, `{{sender_name}}` and `{{sender_first_name}}`. Emails 2–3 reuse the subject as `re: …`.
   - The rendered text for all 3 steps is stored in `outreach_emails.steps`, with `opener` and `template_key` alongside. Claude's untouched version goes in `draft_steps`; on approval, `author` becomes `claude` if unchanged, `claude_edited` if edited, `human` if Claude's draft was rejected or never made.
   - Email 1's offer is the **free ops audit** (Build Plan, inbound layer).
+  - **`agency`** (`015_agencies.sql`): instant follow-up on new inquiries, an AI receptionist for the sales line during client calls, discovery calls booked onto the calendar; US spelling, no "here in Ottawa". The prompt tells Claude to write about their own new-business inquiries and never judge their website, SEO or ads. Call brief question: "When someone fills in your contact form at 9pm, what happens next?"
   - **`car_dealer`** (`012_car_dealer_template.sql`): test drives buyers can book themselves, enquiry follow-up, and an AI receptionist for when the team is busy or the lot is closed. The audit asks how {{company}} handles calls and buyer enquiries. Hand-typed verticals are matched loosely ("Car Dealer" → `car_dealer`), and the migration moves existing "used car dealer"-style leads to `car_dealer`.
 - **Copy rules** (`src/lib/outreach/prompts/copy-system.md`):
   - Opener: one or two sentences, one specific observation from the audit or reviews, nothing invented
@@ -412,6 +421,7 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   sourcing.ts          ✅ # Places search → candidate leads, dedupe
   scoring.ts           ✅
   call-brief.ts        ✅
+  agency.ts            ✅ # agency searches and metros, services / GoHighLevel / off-target detection
   audit.ts             ✅ # fetch + HTML checks (server only)
   audit-findings.ts    ✅ # result type, hook, signals, findings (browser-safe)
   safe-fetch.ts        ✅ # SSRF-guarded page fetch
@@ -444,7 +454,7 @@ src/lib/queries/outreach.ts  ✅    # React Query hooks
 src/lib/queries/calls.ts     ✅
 src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
-  find-leads-dialog.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
+  find-leads-dialog.tsx ✅  agency-batch-search.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
   write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  seed-checks.tsx ✅  mailbox-card.tsx ✅  outreach-stats.tsx
 src/app/api/outreach/
@@ -485,6 +495,7 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 7.1 ✅ | `014_mailbox.sql`; Entra app; connect/reconnect/disconnect; encrypted token; legacy Outlook code removed | "Connected: …@getobatek.com" shows in Settings |
 | 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
 | 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
+| 3 | 7.4 | `015_agencies.sql`; agency vertical and template; Agencies (US) batch search; agency profile in the site check (services, GoHighLevel, off-target); staff range per vertical; agency hooks and copy | 300+ agencies in New; branding/social/enterprise ones score below zero; openers talk about their inquiries, not their site |
 | 4 | 8 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
 | later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |

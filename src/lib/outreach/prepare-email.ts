@@ -80,7 +80,7 @@ export async function prepareEmail(
     lead = fresh.lead
     audit = fresh.audit
   }
-  const hook = audit ? primaryHook(audit) : 'generic'
+  const hook = audit ? primaryHook(audit, lead.vertical) : 'generic'
 
   const [examples, rules] = await Promise.all([
     fetchCopyExamples(crm, lead.vertical, settings.example_max_in_prompt),

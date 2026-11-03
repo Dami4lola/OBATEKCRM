@@ -85,8 +85,8 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   )
   const steps = customSteps ?? rendered
   const audit = parseAudit(email.audit) ?? parseAudit(lead.audit)
-  const hook = email.primary_hook ?? (audit ? primaryHook(audit) : null)
-  const findings = audit ? auditFindings(audit).slice(0, 4) : []
+  const hook = email.primary_hook ?? (audit ? primaryHook(audit, lead.vertical) : null)
+  const findings = audit ? auditFindings(audit, lead.vertical).slice(0, 4) : []
   const words = wordCount(steps[0]?.body ?? '')
   const canApprove = !!steps[0]?.subject.trim() && (customSteps !== null || opener.trim().length > 0)
 

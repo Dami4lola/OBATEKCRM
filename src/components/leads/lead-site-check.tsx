@@ -73,13 +73,13 @@ export function LeadSiteCheck({ lead }: { lead: Lead }) {
       {audit ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{HOOK_LABELS[primaryHook(audit)]}</Badge>
+            <Badge variant="outline">{HOOK_LABELS[primaryHook(audit, lead.vertical)]}</Badge>
             <span className="text-xs text-muted-foreground">
               checked {formatDistanceToNow(new Date(audit.audited_at), { addSuffix: true })}
             </span>
           </div>
           <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">
-            {auditFindings(audit).map((finding) => (
+            {auditFindings(audit, lead.vertical).map((finding) => (
               <li key={finding}>{finding}</li>
             ))}
             <li>Size: {describeCompanySize(size, smallMax)}</li>
