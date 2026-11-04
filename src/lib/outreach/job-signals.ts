@@ -67,7 +67,9 @@ export function prefilter(
   roles: string[],
   staffRange: [number, number]
 ): string | null {
-  if (!jobDomain(job)) return 'No company website'
+  // Small companies often have no website on file; the site check finds it
+  // from their Google listing
+  if (!(job.company_object?.name || job.company)?.trim()) return 'No company name'
   if (job.company_object?.is_recruiting_agency) return 'Staffing or recruiting firm'
   const staff = job.company_object?.employee_count
   if (typeof staff === 'number' && (staff < staffRange[0] || staff > staffRange[1])) return `${staff} staff`
@@ -172,7 +174,8 @@ function cityFrom(location: string | null): string | null {
 
 export type SignalLead = Omit<LeadInsert, 'stage_id' | 'position_index'>
 
-// The lead a fit post becomes. The audit then finds the email and owner.
+// The lead a fit post becomes. The site check then finds the website (from
+// the Google listing when the post had none), the email and the owner.
 export function signalToLead(signal: LeadSignal): SignalLead {
   const company = signal.company_name || signal.company_domain || 'Unknown company'
   const person = parseHiringTeam(signal.hiring_team)[0]

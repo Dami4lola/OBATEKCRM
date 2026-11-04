@@ -128,7 +128,7 @@ export async function auditSignalLeads(
   const ids = [...new Set(signals.map((s) => s.lead_id as string))]
   if (ids.length === 0) return result
 
-  const unaudited = (await fetchLeadsByIds(crm, ids)).filter((lead) => !lead.audited_at && lead.website)
+  const unaudited = (await fetchLeadsByIds(crm, ids)).filter((lead) => !lead.audited_at)
   if (unaudited.length === 0) return result
 
   const startOfDay = new Date(now)
@@ -136,7 +136,8 @@ export async function auditSignalLeads(
   const room = settings.audit_daily_cap - (await countLeadsAuditedSince(crm, startOfDay))
   for (const lead of unaudited.slice(0, Math.max(0, Math.min(room, SIGNAL_AUDITS_PER_TICK)))) {
     try {
-      await runLeadAudit(crm, lead, { checkReviews: false, lookupListing: false, ...keys })
+      // Posts often have no website: the Google listing lookup finds it
+      await runLeadAudit(crm, lead, { checkReviews: false, lookupListing: true, ...keys })
       result.audited++
     } catch (error) {
       result.errors.push(`${lead.company_name ?? lead.contact_name}: ${errorMessage(error)}`)

@@ -2,9 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, LeadSignal } from '@/types/database'
 import {
   fetchExistingContacts,
+  fetchLatestSignalAt,
   fetchPendingSignals,
   fetchRecentSignalDomains,
   findLeadIdByHost,
+  findLeadIdByName,
   findStageByName,
   insertSignals,
   logActivity,
@@ -32,6 +34,8 @@ const FIT_CONCURRENCY = 4
 // How far back a company counts as already seen
 const SKIP_DOMAIN_DAYS = 30
 const SKIP_DOMAIN_MAX = 100
+// Overlap with the last stored post, for posts TheirStack files late
+const DISCOVERED_OVERLAP_MS = 10 * 60_000
 
 export interface PullSignalsDeps {
   search?: (apiKey: string, search: JobSearch) => Promise<JobPost[]>
@@ -137,13 +141,16 @@ export async function pullSignals(
   // (each retry would spend credits)
   await setSetting(crm, 'signals_pulled_at', now.toISOString())
 
-  // 1. Fetch and store every post, dropped ones included
+  // 1. Fetch and store every post, dropped ones included. Only posts found
+  // since the newest one stored, so a post is never bought twice and a
+  // failed pull leaves no gap.
   const cache = { ...settings.signal_location_ids }
-  const skipDomains = await fetchRecentSignalDomains(
-    crm,
-    new Date(now.getTime() - SKIP_DOMAIN_DAYS * 86_400_000),
-    SKIP_DOMAIN_MAX
-  )
+  const [skipDomains, latest] = await Promise.all([
+    fetchRecentSignalDomains(crm, new Date(now.getTime() - SKIP_DOMAIN_DAYS * 86_400_000), SKIP_DOMAIN_MAX),
+    fetchLatestSignalAt(crm),
+  ])
+  const latestMs = latest ? new Date(latest).getTime() : NaN
+  const discoveredSince = Number.isNaN(latestMs) ? null : new Date(latestMs - DISCOVERED_OVERLAP_MS).toISOString()
   for (const region of settings.signal_regions) {
     if (region.daily_jobs <= 0) continue
     const roles = regionRoles(settings, region)
@@ -156,6 +163,7 @@ export async function pullSignals(
         locationIds,
         staffRange: settings.signal_staff_range,
         skipDomains,
+        discoveredSince,
         limit: region.daily_jobs,
       })
       result.fetched += jobs.length
@@ -207,12 +215,17 @@ export async function pullSignals(
   }
   const existing = await fetchExistingContacts(crm)
   // Two posts from one company in the same pull share a lead
-  const leadByHost = new Map<string, string>()
+  const leadByCompany = new Map<string, string>()
 
   for (const signal of fits.sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     try {
       const host = signal.company_domain
-      let leadId = host ? leadByHost.get(host) ?? null : null
+      // No website on the post: match on the name within the state
+      const companyKey = host ?? `${(signal.company_name ?? '').trim().toLowerCase()}|${signal.state_code ?? ''}`
+      let leadId = leadByCompany.get(companyKey) ?? null
+      if (!leadId && !host && signal.company_name?.trim()) {
+        leadId = await findLeadIdByName(crm, signal.company_name.trim(), signal.state_code)
+      }
       if (!leadId && host && existing.hosts.has(host)) {
         leadId = await findLeadIdByHost(crm, host)
         if (!leadId) {
@@ -236,7 +249,7 @@ export async function pullSignals(
         await updateSignal(crm, signal.id, { lead_id: leadId, status: 'lead_created' })
         result.leadsCreated++
       }
-      if (host) leadByHost.set(host, leadId)
+      leadByCompany.set(companyKey, leadId)
 
       await logActivity(crm, {
         lead_id: leadId,

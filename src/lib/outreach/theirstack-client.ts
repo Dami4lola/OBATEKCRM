@@ -62,6 +62,8 @@ export interface JobSearch {
   locationIds: number[]
   staffRange: [number, number]
   skipDomains: string[]
+  // Only posts TheirStack found after this (ISO), so none is bought twice
+  discoveredSince: string | null
   limit: number
 }
 
@@ -69,7 +71,8 @@ async function call(apiKey: string, path: string, init: RequestInit): Promise<un
   const response = await fetch(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...init.headers },
-    signal: AbortSignal.timeout(60_000),
+    // Filtered searches take TheirStack up to a minute or more
+    signal: AbortSignal.timeout(170_000),
   })
   if (!response.ok) {
     const status = response.status
@@ -102,6 +105,7 @@ export function jobSearchBody(search: JobSearch): Record<string, unknown> {
   if (search.locationIds.length) body.job_location_or = search.locationIds.map((id) => ({ id }))
   // Companies already seen recently: their posts would cost credits again
   if (search.skipDomains.length) body.company_domain_not = search.skipDomains
+  if (search.discoveredSince) body.discovered_at_gte = search.discoveredSince
   return body
 }
 

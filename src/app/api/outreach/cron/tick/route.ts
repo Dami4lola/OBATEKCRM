@@ -34,8 +34,11 @@ export async function POST(request: NextRequest) {
 
     let settings = await fetchSettings(crm)
 
-    // Once a day: job posts that show a company needs OBATEK now
+    // Once a day: job posts that show a company needs OBATEK now. A pull
+    // can take a few minutes, so that tick leaves site checks and drafting
+    // to the next one (the scheduler times a tick out at 4 minutes).
     const theirStackKey = process.env.THEIRSTACK_API_KEY
+    let pulledNow = false
     if (theirStackKey) {
       try {
         const signals = await pullSignals(crm, {
@@ -45,6 +48,7 @@ export async function POST(request: NextRequest) {
           now,
         })
         if (!signals.skipped) {
+          pulledNow = true
           summary.signals = signals
           settings = await fetchSettings(crm)
         }
@@ -54,21 +58,25 @@ export async function POST(request: NextRequest) {
 
       // Site checks for new signal leads, then the checked ones into
       // today's Buying signals run (drafted below)
-      try {
-        const placesKey = process.env.GOOGLE_PLACES_API_KEY
-        const audits = await auditSignalLeads(crm, settings, {
-          placesKey,
-          pagespeedKey: process.env.PAGESPEED_API_KEY || placesKey,
-        }, now)
-        if (audits.audited || audits.errors.length) summary.signalAudits = audits
-        const run = await queueSignalLeads(crm, settings, now)
-        if (run.added) summary.signalRun = run
-      } catch (error) {
-        summary.signalRunError = errorMessage(error)
+      if (!pulledNow) {
+        try {
+          const placesKey = process.env.GOOGLE_PLACES_API_KEY
+          const audits = await auditSignalLeads(crm, settings, {
+            placesKey,
+            pagespeedKey: process.env.PAGESPEED_API_KEY || placesKey,
+          }, now)
+          if (audits.audited || audits.errors.length) summary.signalAudits = audits
+          const run = await queueSignalLeads(crm, settings, now)
+          if (run.added) summary.signalRun = run
+        } catch (error) {
+          summary.signalRunError = errorMessage(error)
+        }
       }
     }
 
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (pulledNow) {
+      summary.drafting = 'skipped: buying signals pulled this tick'
+    } else if (process.env.ANTHROPIC_API_KEY) {
       try {
         const placesKey = process.env.GOOGLE_PLACES_API_KEY
         summary.drafting = await draftPending(crm, settings.cron_drafts_per_tick, {

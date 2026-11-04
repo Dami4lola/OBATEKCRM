@@ -612,6 +612,29 @@ export async function countSignalsSince(crm: Crm, since: Date): Promise<number> 
   return count ?? 0
 }
 
+// When the newest stored post was saved: the next search asks only for
+// posts found after it
+export async function fetchLatestSignalAt(crm: Crm): Promise<string | null> {
+  const { data, error } = await crm
+    .from('lead_signals')
+    .select('created_at')
+    .eq('source', 'theirstack')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) throw error
+  return data?.[0]?.created_at ?? null
+}
+
+// A lead with this company name in this state or province, for posts with
+// no website to match on
+export async function findLeadIdByName(crm: Crm, name: string, region: string | null): Promise<string | null> {
+  let query = crm.from('leads').select('id').ilike('company_name', name.replace(/[\\%_]/g, (c) => `\\${c}`))
+  if (region) query = query.ilike('region', region)
+  const { data, error } = await query.limit(1)
+  if (error) throw error
+  return data?.[0]?.id ?? null
+}
+
 // The lead whose website is on this host, if any
 export async function findLeadIdByHost(crm: Crm, host: string): Promise<string | null> {
   const pattern = `%${host.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
