@@ -22,7 +22,7 @@ Second target, run alongside: marketing agencies with 2–20 staff in the Easter
 
 | Signal | Where it comes from | Why it matters |
 | --- | --- | --- |
-| Hiring an office admin or dispatcher | Job boards | Coordination pain right now |
+| Hiring an office admin, dispatcher, appointment setter, SDR or CRM admin | Job posts via TheirStack's API (no scraping) | Coordination pain right now |
 | Reviews mentioning slow callbacks | Google reviews | Exact pitch for communication tooling |
 | No website, dead site, or no online booking | Website audit | Site-plus-AI-receptionist package |
 | Owner reachable directly | Website, LinkedIn, Lusha | Shorter path to a decision |

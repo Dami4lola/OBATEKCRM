@@ -4,6 +4,10 @@ import type {
   CopyFeedbackInsert,
   Database,
   Lead,
+  LeadInsert,
+  LeadSignal,
+  LeadSignalInsert,
+  LeadSignalUpdate,
   LeadUpdate,
   Json,
   OutreachEmail,
@@ -16,7 +20,7 @@ import type {
   SuppressionReason,
 } from '@/types/database'
 import { parseOutreachSettings, type OutreachSettings } from '../settings'
-import { existingContactsFrom, type CandidateLead, type ExistingContacts } from '../sourcing'
+import { existingContactsFrom, websiteHost, type ExistingContacts } from '../sourcing'
 import type { CopyExample } from '../copywriter'
 import { parseSteps } from '../templates'
 import type { SentEmail } from '../inbox-events'
@@ -93,7 +97,7 @@ export async function countLeadsSourcedSince(crm: Crm, since: Date): Promise<num
 export async function pushLeads(
   crm: Crm,
   stageId: string,
-  leads: CandidateLead[]
+  leads: Omit<LeadInsert, 'stage_id' | 'position_index'>[]
 ): Promise<Lead[]> {
   if (leads.length === 0) return []
 
@@ -546,4 +550,83 @@ export async function setSetting(crm: Crm, key: string, value: Json): Promise<vo
     .update({ value, updated_at: new Date().toISOString() })
     .eq('key', key)
   if (error) throw error
+}
+
+// ---------- Buying signals (017) ----------
+
+// Posts already stored are skipped, so a post is never judged twice
+export async function insertSignals(crm: Crm, rows: LeadSignalInsert[]): Promise<LeadSignal[]> {
+  if (rows.length === 0) return []
+  const { data, error } = await crm
+    .from('lead_signals')
+    .upsert(rows, { onConflict: 'source,external_id', ignoreDuplicates: true })
+    .select()
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchPendingSignals(crm: Crm, limit: number): Promise<LeadSignal[]> {
+  const { data, error } = await crm
+    .from('lead_signals')
+    .select('*')
+    .eq('fit', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+  return data || []
+}
+
+export async function updateSignal(crm: Crm, id: string, updates: LeadSignalUpdate): Promise<LeadSignal> {
+  const { data, error } = await crm.from('lead_signals').update(updates).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+// Companies seen lately: left out of the next search so their posts
+// don't cost credits again
+export async function fetchRecentSignalDomains(crm: Crm, since: Date, limit: number): Promise<string[]> {
+  const { data, error } = await crm
+    .from('lead_signals')
+    .select('company_domain')
+    .gte('created_at', since.toISOString())
+    .not('company_domain', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit * 3)
+  if (error) throw error
+  const domains = new Set<string>()
+  for (const row of data || []) {
+    if (row.company_domain) domains.add(row.company_domain)
+    if (domains.size >= limit) break
+  }
+  return [...domains]
+}
+
+// Posts returned since a moment: each one cost a credit
+export async function countSignalsSince(crm: Crm, since: Date): Promise<number> {
+  const { count, error } = await crm
+    .from('lead_signals')
+    .select('id', { count: 'exact', head: true })
+    .eq('source', 'theirstack')
+    .gte('created_at', since.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+// The lead whose website is on this host, if any
+export async function findLeadIdByHost(crm: Crm, host: string): Promise<string | null> {
+  const pattern = `%${host.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+  const { data, error } = await crm.from('leads').select('id, website').ilike('website', pattern).limit(20)
+  if (error) throw error
+  return (data || []).find((row) => websiteHost(row.website) === host)?.id ?? null
+}
+
+export async function fetchSignalsForLead(crm: Crm, leadId: string, limit = 10): Promise<LeadSignal[]> {
+  const { data, error } = await crm
+    .from('lead_signals')
+    .select('*')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data || []
 }

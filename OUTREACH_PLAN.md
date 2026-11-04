@@ -88,7 +88,13 @@ A **Find leads** dialog has inputs for vertical, city and max results. It pulls 
 - **Staff size:** Places does not return it. It comes from Lusha, LinkedIn or manual entry. Until it's known, the lead scores 0 for size.
 - **Lusha** CSVs still import through the existing importer (stage 1).
 - **Agencies (stage 7.4, `agency.ts`):** Find leads → **Agencies (US)** runs one search per agency type ("web design agency", "local SEO agency", "Google Ads agency", "marketing agency") per city in the ticked states (21 preset cities in NY, FL, TX, IL, GA, NC, SC), one at a time through the same route, with `vertical='agency'` and `country='US'`. It stops when the daily lead cap is reached; for 300+ in one go, raise `places_daily_lead_cap` first or run it on two days. **Clutch and UpCity** are used by hand only: both forbid scraping and block bots. **Lusha** exports (Marketing & Advertising, 2–10 / 11–50 staff, by state) import as `agency` through the usual importer.
-- **Hiring signal (Week 4):** a job-board feed that flags businesses hiring an office admin or dispatcher. Which boards to use is an open question in the Build Plan.
+- **Buying signals (stage 8.1, `signal-pull.ts`):** fewer, better leads. Once a day after `signal_pull_hour` (7:00), the tick pulls job posts from **TheirStack** (`theirstack-client.ts`) for small companies (2–20 staff, unknown kept) hiring an appointment setter, SDR, lead-gen specialist, CRM admin or GoHighLevel person (`signal_roles`), one search per region in `signal_regions`: the US target states (30 posts a day) and the Ottawa area (10 a day, plus dispatcher and office administrator, the original trades signal). Each post costs 1 credit; about 1,200 a month fits the $49 plan.
+  - Every post is stored in `lead_signals` (unique per TheirStack id, so it's never judged twice) and companies seen in the last 30 days are left out of the next search.
+  - `job-signals.ts` drops posts with no company website, staffing firms, sizes outside 2–20, places outside the region and titles that don't match a role, before any AI cost. Location ids come from TheirStack's catalog once and are cached in `signal_location_ids`; if one isn't found the region searches the whole country and the state or distance check narrows it.
+  - `signal-fit.ts`: Haiku judges the rest (fit / not fit, target, a one-line reason), with the post as quoted data.
+  - Fit posts become leads in New (`lead_source='theirstack'`, as TheirStack's terms require; hiring manager from the post as the contact; `signals.hiring = true`, worth the pain points), or tag the lead that's already there. Companies deleted with Clean up stay deleted. Each gets an activity note with the job link.
+  - **Buying signals** on the dashboard lists the week's posts with the fit reason and a **Pull now** button (team only, 10 minutes apart, at most two days' credits a day). The lead sheet shows the post and the hiring team.
+  - **No scraping of Indeed or LinkedIn**, and Adzuna is out: its terms forbid lead generation without a written agreement. Lusha (Free/Pro, no API) stays manual for owner emails the site check can't find.
 
 Env: `GOOGLE_PLACES_API_KEY`. It can be the same Google Cloud project as `PAGESPEED_API_KEY`.
 
@@ -365,6 +371,7 @@ Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both 
 - Every 5 minutes it calls `POST localhost:3000/api/outreach/cron/tick` with `Authorization: Bearer $CRON_SECRET`. Set `OUTREACH_APP_URL` to change the address. The middleware lets this path through without a session, and the route checks the secret itself.
 - **Each tick:**
   1. **Start due runs** (`scheduler.ts`), up to 2 a tick. The claim is atomic, so a run can't start twice. A run re-gathers the New stage with the same `gather.ts` as the pop-up, skips leads unticked when it was scheduled and leads below the score threshold, and records blocked leads.
+  - **Pull buying signals** once a day after `signal_pull_hour`, when `THEIRSTACK_API_KEY` is set (§3).
   2. **Write drafts:** up to `cron_drafts_per_tick` (5) for scheduler-started runs, with the same `prepare-email.ts` as the Write step. The daily draft cap still applies.
   3. **Read the inbox** (replies, bounces, opt-outs).
   4. **Send what's due:** follow-ups, then queued first emails, then seed copies, with settings read again (step 3 may have paused sending).
@@ -422,6 +429,10 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   scoring.ts           ✅
   call-brief.ts        ✅
   agency.ts            ✅ # agency searches and metros, services / GoHighLevel / off-target detection
+  theirstack-client.ts ✅ # TheirStack job search + location catalog (server only)
+  job-signals.ts       ✅ # role match, region and prefilter, post → signal row → lead
+  signal-fit.ts        ✅ # Haiku fit check on a post (server only)
+  signal-pull.ts       ✅ # the daily pull: fetch, store, judge, create or tag leads
   audit.ts             ✅ # fetch + HTML checks (server only)
   audit-findings.ts    ✅ # result type, hook, signals, findings (browser-safe)
   safe-fetch.ts        ✅ # SSRF-guarded page fetch
@@ -471,7 +482,7 @@ scripts/outreach-scheduler.mjs ✅
 
 The current `queries/outreach.ts` uses the browser client directly for gather and run creation. That's fine for CRM UI; engine work that runs on the server (source, prepare, send, tick) goes through `adapters/obatek-crm.ts`.
 
-**Environment variables (`.env.local`):** `SUPABASE_SERVICE_ROLE_KEY` (scheduler only), `ANTHROPIC_API_KEY`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `CRON_SECRET`, `OBATEK_MAILING_ADDRESS`. `INSTANTLY_API_KEY` is no longer used.
+**Environment variables (`.env.local`):** `SUPABASE_SERVICE_ROLE_KEY` (scheduler only), `ANTHROPIC_API_KEY`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `CRON_SECRET`, `OBATEK_MAILING_ADDRESS`, `THEIRSTACK_API_KEY`. `INSTANTLY_API_KEY` is no longer used.
 
 The legacy Outlook code from the CRM template (`src/lib/oauth/outlook.ts`, `src/lib/email/outlook-sender.ts`, `/api/oauth/outlook`, `/api/email/send`, the compose and connect dialogs) was removed in 7.1: it never saved the refresh token and wrote to tables that don't exist.
 
@@ -496,7 +507,9 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
 | 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
 | 3 | 7.4 | `015_agencies.sql`; agency vertical and template; Agencies (US) batch search; agency profile in the site check (services, GoHighLevel, off-target); staff range per vertical; agency hooks and copy | 300+ agencies in New; branding/social/enterprise ones score below zero; openers talk about their inquiries, not their site |
-| 4 | 8 | Hiring-signal feed; Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
+| 4 | 8.1a | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |
+| 4 | 8.1b | Signal leads audited automatically; `job_post` hook and a LinkedIn note drafted with the email; a daily "Buying signals" run for one-click review | 10–20 signal emails a day approved; 10%+ reply rate |
+| 4 | 8 | Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
 | later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |
 
@@ -512,11 +525,11 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 |---|---|---|---|
 | S1 ✅ | **Open signup + "authenticated" RLS.** Anyone who signs up can read and edit every lead, run and email | `003_team_access.sql`: every policy checks `is_team_member()` (the `team_members` table, edited only in the SQL editor). Non-members see a no-access screen. Also disable public signup in Supabase (Authentication → Sign In / Providers) | now |
 | S2 ✅ | **SSRF from the site audit.** Lead `website` values come from CSVs and Places, and the server fetches them | Only `http`/`https` on ports 80/443. Resolve DNS and reject loopback, private, link-local and metadata addresses (`127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fc00::/7`), checking again after every redirect. Max 3 redirects, 10s timeout, 2 MB body cap. Never send cookies or auth headers. Done in `safe-fetch.ts`: the IP check runs inside the connection's DNS lookup, so a rebinding answer can't slip past it | 4 |
-| S3 | **Prompt injection from scraped pages and replies.** Site text, reply bodies and bounce notices reach the engine | Pass scraped text as quoted data in its own block, stripped of HTML and truncated. The system prompt says to never follow instructions in it. Validate the output: JSON shape, length limits, no URLs or email addresses in the opener/subject. In auto mode, anything that fails validation drops to manual review instead of sending. Received mail is only matched against fixed patterns; the classifier gets the reply's own text in `<reply>` tags and can only return one of six labels; reply text is never rendered | 5, 6, 7.3, 8 |
+| S3 | **Prompt injection from scraped pages and replies.** Site text, reply bodies and bounce notices reach the engine | Pass scraped text as quoted data in its own block, stripped of HTML and truncated. The system prompt says to never follow instructions in it. Validate the output: JSON shape, length limits, no URLs or email addresses in the opener/subject. In auto mode, anything that fails validation drops to manual review instead of sending. Received mail is only matched against fixed patterns; the classifier gets the reply's own text in `<reply>` tags and can only return one of six labels; reply text is never rendered. Job posts go to the fit check in `<job_post>` tags, stripped and truncated; only the schema's fields come back; job and LinkedIn links are kept only if they're http(s) (hiring team: linkedin.com only) | 5, 6, 7.3, 8, 8.1 |
 | S4 ✅ | **Cron route abuse.** `/api/outreach/cron/tick` starts runs and sends email | `hasValidCronSecret()` in `src/lib/api/guards.ts`: `Authorization: Bearer $CRON_SECRET`, compared with `crypto.timingSafeEqual`. Fails when `CRON_SECRET` is unset. Return 401 with no detail | helper done; route in 6 |
-| S5 ✅ | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY` and `GOOGLE_PLACES_API_KEY` | 3+ |
+| S5 ✅ | **Service-role key exposure** | `SUPABASE_SERVICE_ROLE_KEY` is imported only by `src/lib/supabase/admin.ts`, which starts with `import 'server-only'`. Never prefix it with `NEXT_PUBLIC_`. The same rule applies to `ANTHROPIC_API_KEY`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY`, `GOOGLE_PLACES_API_KEY` and `THEIRSTACK_API_KEY` | 3+ |
 | S6 ✅ | **Server routes acting for any caller.** `source`, `prepare` and `send` cost money and send email | Each route calls `requireTeamMember()` first (session + `is_team_member()`), and uses that user's client so RLS still applies. Validate the body with zod. Re-check compliance and `sending_paused` server-side on every send; never trust the client's list | 3–6 |
-| S7 ✅ | **Cost runaway** (Places, PageSpeed, Claude) | Sourcing: `places_max_results` per search and `places_daily_lead_cap` new leads per day, checked server-side. Prepare: one lead per call (stage 5) | 3 done; 5 |
+| S7 ✅ | **Cost runaway** (Places, PageSpeed, Claude, TheirStack) | Sourcing: `places_max_results` per search and `places_daily_lead_cap` new leads per day, checked server-side. Prepare: one lead per call (stage 5). Signals: `daily_jobs` per region is the search limit; the pull is marked before it runs so a failure isn't retried every tick; Pull now is 10 minutes apart and capped at two days' credits a day | 3 done; 5; 8.1 |
 | S8 ✅ | **Rendering untrusted text.** Scraped names, reviews and Claude output appear in the CRM | Render as text through React. No `dangerouslySetInnerHTML`. Links go through `externalUrl()` in `src/lib/utils.ts` (http/https only) | 3+ |
 | S9 ✅ | **Open redirect in the auth callback.** `next` comes from the query string | `safeNextPath()` in the callback route: `next` must start with `/`, not `//` or `/\` | now |
 | S10 ✅ | **Mailbox token theft.** Whoever holds the refresh token can send and read as the mailbox | Delegated permissions only, least scopes, single tenant. Refresh token AES-256-GCM encrypted with `MAIL_TOKEN_KEY`; `outreach_mailbox` has RLS and no policies, and its functions are gated by `is_team_member()` or the service role and return ciphertext only. Access tokens in memory only, never logged or sent to the browser. Disconnect deletes the row. Note the client secret's expiry | 7.1 |
@@ -529,7 +542,7 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 
 - Small-client bundle price per month
 - Score threshold (placeholder: 5)
-- Which job boards feed the hiring signal
+- ~~Which job boards feed the hiring signal~~: TheirStack (8.1). Its terms ban redistributing its data, so when the Lead Engine is sold with buying signals, each client uses its own TheirStack account and key
 - Places + Claude cost per qualified lead (§12 logs the call counts)
 - Self-hosting from the start or only on request
 - Which CRM the first bigger prospect runs

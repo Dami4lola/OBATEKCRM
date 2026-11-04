@@ -64,6 +64,7 @@ export const HOOK_LABELS: Record<OutreachHook, string> = {
   outdated: 'Website looks out of date',
   seo_local: "Website isn't set up to be found locally",
   generic: 'No obvious website problem',
+  job_post: 'Hiring for work OBATEK automates',
 }
 
 export function parseAudit(value: Json | null | undefined): SiteAudit | null {

@@ -6,13 +6,15 @@ import { fetchSettings } from '@/lib/outreach/adapters/obatek-crm'
 import { draftPending, startDueRuns } from '@/lib/outreach/scheduler'
 import { sendDue } from '@/lib/outreach/send-queue'
 import { syncInbox } from '@/lib/outreach/inbox-sync'
+import { pullSignals } from '@/lib/outreach/signal-pull'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
 // Called every 5 minutes by scripts/outreach-scheduler.mjs (§11): start due
-// runs, write a few drafts, read the mailbox, then send what's due from it.
+// runs, pull buying signals (once a day), write a few drafts, read the
+// mailbox, then send what's due from it.
 // Each part runs even if an earlier one fails.
 export async function POST(request: NextRequest) {
   if (!hasValidCronSecret(request)) {
@@ -30,7 +32,26 @@ export async function POST(request: NextRequest) {
       summary.startError = errorMessage(error)
     }
 
-    const settings = await fetchSettings(crm)
+    let settings = await fetchSettings(crm)
+
+    // Once a day: job posts that show a company needs OBATEK now
+    const theirStackKey = process.env.THEIRSTACK_API_KEY
+    if (theirStackKey) {
+      try {
+        const signals = await pullSignals(crm, {
+          apiKey: theirStackKey,
+          settings,
+          canClassify: !!process.env.ANTHROPIC_API_KEY,
+          now,
+        })
+        if (!signals.skipped) {
+          summary.signals = signals
+          settings = await fetchSettings(crm)
+        }
+      } catch (error) {
+        summary.signalError = errorMessage(error)
+      }
+    }
 
     if (process.env.ANTHROPIC_API_KEY) {
       try {

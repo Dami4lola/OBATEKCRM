@@ -44,6 +44,35 @@ export interface OutreachSettings {
   auto_unlock_reply_rate: number
   // Staff counts that earn the size points, by vertical (015)
   staff_range: Record<string, [number, number]>
+  // Buying signals from job posts (017)
+  signal_roles: string[]
+  signal_regions: SignalRegion[]
+  // "US:Texas" -> TheirStack location id, looked up once
+  signal_location_ids: Record<string, number>
+  signal_max_age_days: number
+  signal_staff_range: [number, number]
+  // Local hour (send_timezone) after which the daily pull runs
+  signal_pull_hour: number
+  signal_fit_model: string
+  signals_pulled_at: string | null
+}
+
+export interface SignalPlace {
+  name: string
+  // US: a state; elsewhere a city with a radius
+  state_code?: string
+  near?: [number, number]
+  radius_km?: number
+}
+
+// One TheirStack search a day; daily_jobs is the most it returns (1 credit each)
+export interface SignalRegion {
+  key: string
+  name: string
+  country: string
+  places: SignalPlace[]
+  extra_roles: string[]
+  daily_jobs: number
 }
 
 export interface TemplateStep {
@@ -59,7 +88,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql and 015_agencies.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql and 017_buying_signals.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -154,6 +183,47 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   seed_addresses: [],
   auto_unlock_reply_rate: 0.05,
   staff_range: { default: [2, 15], agency: [2, 20] },
+  signal_roles: [
+    'appointment setter',
+    'sales development representative',
+    'SDR',
+    'lead generation specialist',
+    'CRM administrator',
+    'GoHighLevel',
+  ],
+  signal_regions: [
+    {
+      key: 'us',
+      name: 'US target states',
+      country: 'US',
+      places: [
+        { name: 'New York', state_code: 'NY' },
+        { name: 'Florida', state_code: 'FL' },
+        { name: 'Texas', state_code: 'TX' },
+        { name: 'Illinois', state_code: 'IL' },
+        { name: 'Georgia', state_code: 'GA' },
+        { name: 'North Carolina', state_code: 'NC' },
+        { name: 'South Carolina', state_code: 'SC' },
+      ],
+      extra_roles: [],
+      daily_jobs: 30,
+    },
+    {
+      key: 'ottawa',
+      name: 'Ottawa area',
+      country: 'CA',
+      places: [{ name: 'Ottawa', near: [45.4215, -75.6972], radius_km: 60 }],
+      // The Build Plan's original trades signal
+      extra_roles: ['dispatcher', 'office administrator'],
+      daily_jobs: 10,
+    },
+  ],
+  signal_location_ids: {},
+  signal_max_age_days: 3,
+  signal_staff_range: [2, 20],
+  signal_pull_hour: 7,
+  signal_fit_model: 'claude-haiku-5-5',
+  signals_pulled_at: null,
 }
 
 // Missing or unknown keys fall back to the defaults

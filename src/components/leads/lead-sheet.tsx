@@ -65,6 +65,7 @@ import {
 import { LeadOutreachFields } from './lead-outreach-fields'
 import { externalUrl } from '@/lib/utils'
 import { LeadSiteCheck } from './lead-site-check'
+import { LeadSignals } from './lead-signals'
 import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
 import { useLeadMeetings } from '@/lib/queries/meetings'
 import { getRoleLabel } from '@/lib/validations/meeting'
@@ -290,6 +291,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   </div>
                 )}
               </div>
+
+              <LeadSignals lead={lead} />
 
               <LeadSiteCheck key={lead.id} lead={lead} />
 

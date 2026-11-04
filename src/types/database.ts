@@ -8,7 +8,7 @@ export type Json =
 
 // Outreach unions, shared across Row/Insert/Update below
 export type EmailSource = 'website' | 'lusha' | 'manual' | 'referral' | 'other'
-export type LeadSource = 'places' | 'lusha' | 'import' | 'manual' | 'referral' | 'other'
+export type LeadSource = 'places' | 'lusha' | 'import' | 'manual' | 'referral' | 'other' | 'theirstack'
 export type TaskKind = 'general' | 'call'
 export type OutreachRunStatus =
   | 'scheduled'
@@ -33,7 +33,12 @@ export type OutreachHook =
   | 'outdated'
   | 'seo_local'
   | 'generic'
+  | 'job_post'
 export type OutreachAuthor = 'human' | 'claude' | 'claude_edited'
+export type SignalSource = 'theirstack' | 'manual'
+export type SignalFit = 'pending' | 'fit' | 'not_fit'
+export type SignalTarget = 'agency' | 'trades' | 'dealer' | 'other'
+export type SignalStatus = 'new' | 'lead_created' | 'matched_existing' | 'discarded'
 export type ReplyClass =
   | 'interested'
   | 'not_now'
@@ -425,6 +430,7 @@ export interface Database {
           bounced_at: string | null
           unsubscribed_at: string | null
           is_example: boolean
+          linkedin_draft: string | null
           stats_synced_at: string | null
           queued_at: string | null
           sequence_state: SequenceState | null
@@ -461,6 +467,7 @@ export interface Database {
           bounced_at?: string | null
           unsubscribed_at?: string | null
           is_example?: boolean
+          linkedin_draft?: string | null
           stats_synced_at?: string | null
           queued_at?: string | null
           sequence_state?: SequenceState | null
@@ -497,6 +504,7 @@ export interface Database {
           bounced_at?: string | null
           unsubscribed_at?: string | null
           is_example?: boolean
+          linkedin_draft?: string | null
           stats_synced_at?: string | null
           queued_at?: string | null
           sequence_state?: SequenceState | null
@@ -569,6 +577,100 @@ export interface Database {
             foreignKeyName: 'outreach_messages_email_id_fkey'
             columns: ['email_id']
             referencedRelation: 'outreach_emails'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      lead_signals: {
+        Row: {
+          id: string
+          lead_id: string | null
+          source: SignalSource
+          external_id: string
+          kind: 'job_post'
+          region: string | null
+          job_title: string
+          matched_term: string | null
+          job_url: string | null
+          posted_at: string | null
+          location: string | null
+          state_code: string | null
+          country_code: string | null
+          company_name: string | null
+          company_domain: string | null
+          company_linkedin_url: string | null
+          employee_count: number | null
+          industry: string | null
+          hiring_team: Json
+          excerpt: string | null
+          fit: SignalFit
+          fit_target: SignalTarget | null
+          fit_reason: string | null
+          fit_checked_at: string | null
+          status: SignalStatus
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id?: string | null
+          source: SignalSource
+          external_id: string
+          kind?: 'job_post'
+          region?: string | null
+          job_title: string
+          matched_term?: string | null
+          job_url?: string | null
+          posted_at?: string | null
+          location?: string | null
+          state_code?: string | null
+          country_code?: string | null
+          company_name?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          employee_count?: number | null
+          industry?: string | null
+          hiring_team?: Json
+          excerpt?: string | null
+          fit?: SignalFit
+          fit_target?: SignalTarget | null
+          fit_reason?: string | null
+          fit_checked_at?: string | null
+          status?: SignalStatus
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string | null
+          source?: SignalSource
+          external_id?: string
+          kind?: 'job_post'
+          region?: string | null
+          job_title?: string
+          matched_term?: string | null
+          job_url?: string | null
+          posted_at?: string | null
+          location?: string | null
+          state_code?: string | null
+          country_code?: string | null
+          company_name?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          employee_count?: number | null
+          industry?: string | null
+          hiring_team?: Json
+          excerpt?: string | null
+          fit?: SignalFit
+          fit_target?: SignalTarget | null
+          fit_reason?: string | null
+          fit_checked_at?: string | null
+          status?: SignalStatus
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'lead_signals_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
             referencedColumns: ['id']
           }
         ]
@@ -783,6 +885,9 @@ export type OutreachEmailUpdate = Database['public']['Tables']['outreach_emails'
 export type OutreachMessage = Database['public']['Tables']['outreach_messages']['Row']
 export type OutreachMessageInsert = Database['public']['Tables']['outreach_messages']['Insert']
 export type OutreachMessageUpdate = Database['public']['Tables']['outreach_messages']['Update']
+export type LeadSignal = Database['public']['Tables']['lead_signals']['Row']
+export type LeadSignalInsert = Database['public']['Tables']['lead_signals']['Insert']
+export type LeadSignalUpdate = Database['public']['Tables']['lead_signals']['Update']
 export type Suppression = Database['public']['Tables']['suppression_list']['Row']
 export type SuppressionInsert = Database['public']['Tables']['suppression_list']['Insert']
 export type OutreachSetting = Database['public']['Tables']['outreach_settings']['Row']

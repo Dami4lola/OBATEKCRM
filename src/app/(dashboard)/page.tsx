@@ -5,6 +5,7 @@ import { FindLeadsDialog } from '@/components/outreach/find-leads-dialog'
 import { CheckSitesDialog } from '@/components/outreach/check-sites-dialog'
 import { CleanupLeadsDialog } from '@/components/outreach/cleanup-leads-dialog'
 import { TodaysCallsDialog } from '@/components/outreach/todays-calls-dialog'
+import { BuyingSignalsDialog } from '@/components/outreach/buying-signals-dialog'
 
 export default function DashboardPage() {
   return (
@@ -21,6 +22,7 @@ export default function DashboardPage() {
             <FindLeadsDialog />
             <CheckSitesDialog />
             <CleanupLeadsDialog />
+            <BuyingSignalsDialog />
             <TodaysCallsDialog />
             <RunOutreachButton />
           </div>
