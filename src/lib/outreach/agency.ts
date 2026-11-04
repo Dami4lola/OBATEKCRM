@@ -6,16 +6,8 @@
 // Google Maps rarely labels GoHighLevel shops; the site check finds those
 export const AGENCY_SEARCHES = ['web design agency', 'local SEO agency', 'Google Ads agency', 'marketing agency']
 
-// Searched one city at a time; Places returns at most 60 per search
-export const AGENCY_METROS: { state: string; name: string; cities: string[] }[] = [
-  { state: 'NY', name: 'New York', cities: ['New York', 'Buffalo', 'Rochester', 'Albany'] },
-  { state: 'FL', name: 'Florida', cities: ['Miami', 'Tampa', 'Orlando', 'Jacksonville'] },
-  { state: 'TX', name: 'Texas', cities: ['Houston', 'Dallas', 'Austin', 'San Antonio'] },
-  { state: 'IL', name: 'Illinois', cities: ['Chicago', 'Naperville'] },
-  { state: 'GA', name: 'Georgia', cities: ['Atlanta', 'Savannah'] },
-  { state: 'NC', name: 'North Carolina', cities: ['Charlotte', 'Raleigh'] },
-  { state: 'SC', name: 'South Carolina', cities: ['Charleston', 'Columbia', 'Greenville'] },
-]
+// Same states and cities as the other US targets
+export { US_TARGET_METROS as AGENCY_METROS } from './us-targets'
 
 export type AgencyService = 'web_design' | 'local_seo' | 'google_ads'
 export type OffTarget = 'branding' | 'social' | 'enterprise'

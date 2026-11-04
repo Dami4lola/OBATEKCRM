@@ -119,7 +119,9 @@ export function leadBrief({ lead, audit, hook, offer, examples, revision, signal
     lead.city ? `City: ${quoted(lead.city, 60)}` : null,
     lead.vertical === 'agency'
       ? 'Business type: marketing agency'
-      : lead.vertical
+      : lead.vertical === 'property'
+        ? 'Business type: property management or real estate brokerage'
+        : lead.vertical
         ? `Trade: ${lead.vertical.replace(/_/g, ' ')}`
         : null,
     lead.google_rating != null

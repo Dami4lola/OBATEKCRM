@@ -37,7 +37,7 @@ export type OutreachHook =
 export type OutreachAuthor = 'human' | 'claude' | 'claude_edited'
 export type SignalSource = 'theirstack' | 'manual'
 export type SignalFit = 'pending' | 'fit' | 'not_fit'
-export type SignalTarget = 'agency' | 'trades' | 'dealer' | 'other'
+export type SignalTarget = 'agency' | 'trades' | 'dealer' | 'property' | 'other'
 export type SignalStatus = 'new' | 'lead_created' | 'matched_existing' | 'discarded'
 export type ReplyClass =
   | 'interested'

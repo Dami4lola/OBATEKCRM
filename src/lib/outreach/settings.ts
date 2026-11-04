@@ -88,7 +88,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql and 017_buying_signals.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql, 017_buying_signals.sql and 018_property.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -103,7 +103,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   offer_description: '',
   score_weights: { pain_signal: 3, staff_size: 2, owner_reachable: 2, target_vertical: 1 },
   score_threshold: 5,
-  target_verticals: ['handyman', 'agency'],
+  target_verticals: ['handyman', 'agency', 'car_dealer', 'property'],
   call_list_size: 3,
   auto_unlock_min_days: 14,
   places_max_results: 60,
@@ -112,7 +112,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   audit_daily_cap: 800,
   generic_email_keep_score: 7,
   small_business_max_staff: 50,
-  // Mirrors 009_write_step.sql, 012_car_dealer_template.sql and 015_agencies.sql; edit there (or in the settings table)
+  // Mirrors 009_write_step.sql, 012_car_dealer_template.sql, 015_agencies.sql and 018_property.sql; edit there (or in the settings table)
   email_templates: {
     default: [
       {
@@ -165,6 +165,23 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
         body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
       },
     ],
+    property: [
+      {
+        step: 1,
+        subject: '{{subject}}',
+        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK, a small automation shop. For property managers and brokerages like {{company}}, we set up a CRM that keeps every lead, tenant and owner in one place, instant replies to inquiries, and an AI receptionist for after-hours calls.\n\nWould a free one-page audit of how {{company}} handles calls and inquiries be useful?\n\n{{sender_name}}",
+      },
+      {
+        step: 2,
+        subject: 're: {{subject}}',
+        body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If an inquiry or a maintenance call ever slipped through while the team was out at a showing, the free audit would show where {{company}} loses them. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
+      },
+      {
+        step: 3,
+        subject: 're: {{subject}}',
+        body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
+      },
+    ],
   },
   sender_name: 'Dami Ayoade',
   copy_model: 'claude-opus-5-5',
@@ -182,7 +199,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   warmup_started_at: null,
   seed_addresses: [],
   auto_unlock_reply_rate: 0.05,
-  staff_range: { default: [2, 15], agency: [2, 20] },
+  staff_range: { default: [2, 15], agency: [2, 20], property: [2, 20] },
   signal_roles: [
     'appointment setter',
     'sales development representative',
@@ -190,6 +207,10 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
     'lead generation specialist',
     'CRM administrator',
     'GoHighLevel',
+    // Real estate's appointment setter, and property managers' front desk
+    'inside sales agent',
+    'leasing agent',
+    'property administrator',
   ],
   signal_regions: [
     {

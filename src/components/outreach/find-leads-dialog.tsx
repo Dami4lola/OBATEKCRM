@@ -25,7 +25,7 @@ import {
 import { VERTICALS } from '@/lib/validations/lead'
 import { useOutreachSettings, useSourceLeads } from '@/lib/queries/outreach'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
-import { AgencyBatchSearch } from './agency-batch-search'
+import { BATCH_TARGETS, UsBatchSearch } from './us-batch-search'
 
 const RESULT_OPTIONS = [20, 40, 60]
 
@@ -42,8 +42,8 @@ export function FindLeadsDialog() {
   const [country, setCountry] = useState('CA')
   const [maxResults, setMaxResults] = useState(20)
   const [result, setResult] = useState<SourceLeadsResult | null>(null)
-  // One search, or the agency batch across US states
-  const [mode, setMode] = useState<'single' | 'agencies'>('single')
+  // One search, or a batch across the US target states
+  const [mode, setMode] = useState<'single' | 'agency' | 'property'>('single')
 
   const sourceLeads = useSourceLeads()
   const { data: settings } = useOutreachSettings()
@@ -84,7 +84,7 @@ export function FindLeadsDialog() {
           Find leads
         </Button>
       </DialogTrigger>
-      <DialogContent className={mode === 'agencies' ? 'sm:max-w-lg' : 'sm:max-w-md'}>
+      <DialogContent className={mode !== 'single' ? 'sm:max-w-lg' : 'sm:max-w-md'}>
         <DialogHeader>
           <DialogTitle>{result ? 'Leads added' : 'Find leads'}</DialogTitle>
           {!result && (
@@ -97,21 +97,23 @@ export function FindLeadsDialog() {
 
         {!result && (
           <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
-            {(['single', 'agencies'] as const).map((m) => (
+            {(['single', 'agency', 'property'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setMode(m)}
                 className={`flex-1 rounded px-2 py-1 ${mode === m ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground'}`}
               >
-                {m === 'single' ? 'One search' : 'Agencies (US)'}
+                {m === 'single' ? 'One search' : m === 'agency' ? 'Agencies (US)' : 'Property (US)'}
               </button>
             ))}
           </div>
         )}
 
-        {mode === 'agencies' && !result ? (
-          <AgencyBatchSearch
+        {mode !== 'single' && !result ? (
+          <UsBatchSearch
+            key={mode}
+            target={BATCH_TARGETS[mode]}
             dailyCap={settings?.places_daily_lead_cap ?? 200}
             onDone={() => handleOpenChange(false)}
           />

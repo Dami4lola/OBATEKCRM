@@ -20,6 +20,8 @@ Start with small handyman and home-repair businesses (2–10 staff) running jobs
 
 Second target, run alongside: marketing agencies with 2–20 staff in the Eastern and Central US (NY, FL, TX, IL, GA, the Carolinas) doing web design, local SEO, GoHighLevel or local Google Ads, not branding, social content or enterprise work. The offer is their own back office: instant follow-up on new inquiries, an AI receptionist for the sales line, discovery calls booked onto the calendar. Sources: Google Maps (in the tool) and Lusha; Clutch and UpCity by hand.
 
+Third target, same states: small property management companies and real estate brokerages (2–20 staff). Calls, rental and listing inquiries and maintenance requests wait while the team is out at showings, and leads live in inboxes and spreadsheets. The offer: a simple CRM for every lead, tenant and owner, instant replies to inquiries, and an AI receptionist for after-hours calls.
+
 | Signal | Where it comes from | Why it matters |
 | --- | --- | --- |
 | Hiring an office admin, dispatcher, appointment setter, SDR or CRM admin | Job posts via TheirStack's API (no scraping) | Coordination pain right now |

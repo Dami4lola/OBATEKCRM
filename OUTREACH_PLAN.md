@@ -88,6 +88,7 @@ A **Find leads** dialog has inputs for vertical, city and max results. It pulls 
 - **Staff size:** Places does not return it. It comes from Lusha, LinkedIn or manual entry. Until it's known, the lead scores 0 for size.
 - **Lusha** CSVs still import through the existing importer (stage 1).
 - **Agencies (stage 7.4, `agency.ts`):** Find leads → **Agencies (US)** runs one search per agency type ("web design agency", "local SEO agency", "Google Ads agency", "marketing agency") per city in the ticked states (21 preset cities in NY, FL, TX, IL, GA, NC, SC), one at a time through the same route, with `vertical='agency'` and `country='US'`. It stops when the daily lead cap is reached; for 300+ in one go, raise `places_daily_lead_cap` first or run it on two days. **Clutch and UpCity** are used by hand only: both forbid scraping and block bots. **Lusha** exports (Marketing & Advertising, 2–10 / 11–50 staff, by state) import as `agency` through the usual importer.
+- **Property managers and brokerages (stage 7.5, `us-targets.ts`):** Find leads → **Property (US)** runs the same batch (`us-batch-search.tsx`, shared with agencies; the 21 cities live in `US_TARGET_METROS`) with "property management company", "rental property management", "real estate brokerage" and "realty", `vertical='property'`. "Leasing office" is left out because it finds big apartment complexes. Franchise offices (RE/MAX, Keller Williams) are independently owned and count. **Lusha** "Real Estate" exports import as `property` (`normalizeVertical`: property management, real estate, realty, realtor, brokerage, leasing; "property maintenance" stays `handyman`).
 - **Buying signals (stage 8.1, `signal-pull.ts`):** fewer, better leads. Once a day after `signal_pull_hour` (7:00), the tick pulls job posts from **TheirStack** (`theirstack-client.ts`) for small companies (2–20 staff, unknown kept) hiring an appointment setter, SDR, lead-gen specialist, CRM admin or GoHighLevel person (`signal_roles`), one search per region in `signal_regions`: the US target states (30 posts a day) and the Ottawa area (10 a day, plus dispatcher and office administrator, the original trades signal). Each post costs 1 credit; about 1,200 a month fits the $49 plan.
   - Every post is stored in `lead_signals` (unique per TheirStack id, so it's never judged twice). Each search asks only for posts TheirStack found since the newest stored one (`discovered_at_gte`, 10 minutes' overlap), and companies seen in the last 30 days are left out, so a post isn't bought twice. Filtered searches take TheirStack about a minute, so the client waits up to 170 seconds, and the tick that pulls leaves site checks and drafting to the next tick.
   - Small companies often have no website on file at TheirStack: those posts are kept, matched to existing leads by name within the state, and the site check finds the website from the Google listing.
@@ -112,9 +113,9 @@ Default weights, from the Build Plan, stored in `outreach_settings.score_weights
 | Signal | Points | Source |
 |---|---|---|
 | Pain signal: no site, dead site, no online booking, reviews mentioning slow callbacks, or hiring admin/dispatch | +3 (once, however many apply) | audit, Places reviews, job feed |
-| 2–15 staff (agencies 2–20, `staff_range`) | +2 | `staff_size` |
+| 2–15 staff (agencies and property 2–20, `staff_range`) | +2 | `staff_size` |
 | Owner reachable directly | +2 | owner name found on the About page or LinkedIn **and** a direct email or phone; or `job_title` matches owner/founder/president/principal |
-| Target vertical | +1 | `vertical` in `target_verticals` (`handyman`, `agency`); agencies show their services, e.g. "Agency: web design, local SEO, GoHighLevel" |
+| Target vertical | +1 | `vertical` in `target_verticals` (`handyman`, `agency`, `car_dealer`, `property`; car dealers were missing until 018); agencies show their services, e.g. "Agency: web design, local SEO, GoHighLevel" |
 | Off-target agency (branding, social content, enterprise) | −max | `signals.off_target`, set by the site check for agency leads: they score below zero, start unticked and are offered by Clean up |
 
 - **Threshold:** `outreach_settings.score_threshold`, default **5**. This is a placeholder; the Build Plan lists it as an open question.
@@ -282,6 +283,7 @@ No links, no tracking pixel. The inbox sync turns STOP/unsubscribe replies into 
   - Email 1's offer is the **free ops audit** (Build Plan, inbound layer).
   - **`agency`** (`015_agencies.sql`): instant follow-up on new inquiries, an AI receptionist for the sales line during client calls, discovery calls booked onto the calendar; US spelling, no "here in Ottawa". The prompt tells Claude to write about their own new-business inquiries and never judge their website, SEO or ads. Call brief question: "When someone fills in your contact form at 9pm, what happens next?"
   - **`car_dealer`** (`012_car_dealer_template.sql`): test drives buyers can book themselves, enquiry follow-up, and an AI receptionist for when the team is busy or the lot is closed. The audit asks how {{company}} handles calls and buyer enquiries. Hand-typed verticals are matched loosely ("Car Dealer" → `car_dealer`), and the migration moves existing "used car dealer"-style leads to `car_dealer`.
+  - **`property`** (`018_property.sql`): a CRM that keeps every lead, tenant and owner in one place, instant replies to inquiries, and an AI receptionist for after-hours calls; US spelling, 59 words plus the opener. The prompt tells Claude to write about inquiries and calls waiting while the team is out at showings or inspections, and never to comment on listings, prices or the market. Site-critique hooks stay allowed (unlike agencies). Call brief question: "When a tenant calls about a leak at night, or a buyer inquiry comes in during a showing, who picks up?" Buying signals also look for inside sales agents (real estate's appointment setter), leasing agents and property administrators.
 - **Copy rules** (`src/lib/outreach/prompts/copy-system.md`):
   - Opener: one or two sentences, one specific observation from the audit or reviews, nothing invented
   - Email 1 in total: under 90 words, plain text, no links except the unsubscribe footer, one question as the CTA
@@ -431,7 +433,8 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   sourcing.ts          ✅ # Places search → candidate leads, dedupe
   scoring.ts           ✅
   call-brief.ts        ✅
-  agency.ts            ✅ # agency searches and metros, services / GoHighLevel / off-target detection
+  agency.ts            ✅ # agency searches, services / GoHighLevel / off-target detection
+  us-targets.ts        ✅ # US target states and cities (agencies, property), property searches
   theirstack-client.ts ✅ # TheirStack job search + location catalog (server only)
   job-signals.ts       ✅ # role match, region and prefilter, post → signal row → lead
   signal-fit.ts        ✅ # Haiku fit check on a post (server only)
@@ -468,7 +471,7 @@ src/lib/queries/outreach.ts  ✅    # React Query hooks
 src/lib/queries/calls.ts     ✅
 src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
-  find-leads-dialog.tsx ✅  agency-batch-search.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
+  find-leads-dialog.tsx ✅  us-batch-search.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
   write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  seed-checks.tsx ✅  mailbox-card.tsx ✅  outreach-stats.tsx
 src/app/api/outreach/
@@ -510,6 +513,7 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
 | 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
 | 3 | 7.4 | `015_agencies.sql`; agency vertical and template; Agencies (US) batch search; agency profile in the site check (services, GoHighLevel, off-target); staff range per vertical; agency hooks and copy | 300+ agencies in New; branding/social/enterprise ones score below zero; openers talk about their inquiries, not their site |
+| 3 | 7.5 | `018_property.sql`; `property` vertical (keywords, template, copy, call question); Property (US) batch search sharing the agency states; car dealers and property added to `target_verticals`; property roles in buying signals | 100+ property managers and brokerages in New; openers about inquiries and after-hours calls |
 | 4 | 8.1a ✅ | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |
 | 4 | 8.1b ✅ | Signal leads audited automatically; `job_post` hook and a LinkedIn note drafted with the email; a daily "Buying signals" run for one-click review | 10–20 signal emails a day approved; 10%+ reply rate |
 | 4 | 8 | Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |

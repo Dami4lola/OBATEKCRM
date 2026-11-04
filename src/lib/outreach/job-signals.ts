@@ -163,6 +163,7 @@ export function parseHiringTeam(value: Json): HiringPerson[] {
 function verticalFor(target: SignalTarget | null, industry: string | null, company: string): string | null {
   if (target === 'agency') return 'agency'
   if (target === 'dealer') return 'car_dealer'
+  if (target === 'property') return 'property'
   if (target === 'trades') return normalizeVertical(`${company} ${industry ?? ''}`)
   return industry ? normalizeVertical(industry) : null
 }

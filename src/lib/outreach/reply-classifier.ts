@@ -11,7 +11,7 @@ const REPLY_CLASSES = ['interested', 'not_now', 'wrong_person', 'unsubscribe', '
 
 const ClassSchema = z.object({ reply_class: z.enum(REPLY_CLASSES) })
 
-const SYSTEM_PROMPT = `You sort replies to cold emails from OBATEK, a small Ottawa software shop that offers trades businesses and car dealers a free one-page audit of how they handle calls, quotes and bookings.
+const SYSTEM_PROMPT = `You sort replies to cold emails from OBATEK, a small Ottawa software shop that offers small businesses (trades, car dealers, marketing agencies, property managers and brokerages) a free one-page audit of how they handle calls, inquiries and bookings.
 
 Pick exactly one label:
 - interested: wants the audit, a call, more information, or asks a question that shows interest
