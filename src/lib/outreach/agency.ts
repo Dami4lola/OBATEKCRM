@@ -48,6 +48,9 @@ const BRANDING = /\b(branding|brand identity|brand strategy|logo design|visual i
 const SOCIAL = /\b(social media (management|marketing|content)|content creation|content creators?|influencer|tiktok|instagram (growth|management)|ugc)\b/gi
 const ENTERPRISE = /\b(fortune\s?(500|1000)|enterprise (clients|brands|companies|organizations)|global brands|multinational)\b/i
 
+// Kept out of the copywriter's findings: it's for whoever ticks the leads
+export const BIG_CLIENT_NOTE = 'Big-client wording'
+
 function count(text: string, pattern: RegExp): number {
   return text.match(pattern)?.length ?? 0
 }
@@ -64,20 +67,23 @@ export function detectAgencyProfile(html: string, text: string): AgencyProfile {
 
   let off_target: OffTarget | null = null
   const enterprise = ENTERPRISE.exec(text)?.[0]
-  if (enterprise) {
-    off_target = 'enterprise'
-    evidence.push(`Enterprise wording: "${enterprise}"`)
-  } else if (services.length === 0 && !gohighlevel) {
+  if (services.length === 0 && !gohighlevel) {
     // A studio that also does branding is fine; one that only does it isn't
     const branding = count(text, BRANDING)
     const social = count(text, SOCIAL)
-    if (branding >= 2 && branding >= social) {
+    if (enterprise) {
+      off_target = 'enterprise'
+      evidence.push(`Enterprise wording: "${enterprise}"`)
+    } else if (branding >= 2 && branding >= social) {
       off_target = 'branding'
       evidence.push('Branding-focused, no web, SEO or ads services seen')
     } else if (social >= 2) {
       off_target = 'social'
       evidence.push('Social and content-focused, no web, SEO or ads services seen')
     }
+  } else if (enterprise) {
+    // Small shops boast about Fortune 500 clients too: a note, not a penalty
+    evidence.push(`${BIG_CLIENT_NOTE} ("${enterprise}"): check the team size`)
   }
 
   if (services.length > 0) evidence.unshift(`Offers ${services.map((s) => AGENCY_SERVICE_LABELS[s]).join(', ')}`)

@@ -3,6 +3,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 import type { Lead, OutreachHook } from '@/types/database'
 import { auditFindings, HOOK_LABELS, type SiteAudit } from './audit-findings'
+import { BIG_CLIENT_NOTE } from './agency'
 import { COPY_SYSTEM_PROMPT } from './prompts/copy-system'
 import { firstName, wordCount } from './templates'
 
@@ -82,7 +83,9 @@ function quoted(text: string, max = 300): string {
 }
 
 export function leadBrief({ lead, audit, hook, offer, examples, revision }: DraftInput): string {
-  const findings = audit ? auditFindings(audit, lead.vertical).filter((f) => !f.startsWith('Owner (from site')) : []
+  const findings = audit
+    ? auditFindings(audit, lead.vertical).filter((f) => !f.startsWith('Owner (from site') && !f.startsWith(BIG_CLIENT_NOTE))
+    : []
   const reviews = audit?.slow_callback_reviews ?? []
   const lines = [
     '<lead>',
