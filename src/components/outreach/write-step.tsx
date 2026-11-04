@@ -27,6 +27,7 @@ import { REPLY_CLASS_LABELS } from '@/lib/outreach/stats'
 import type { OutreachEmail, OutreachEmailStep } from '@/types/database'
 import { CopyRulesPanel } from './copy-rules-panel'
 import { SendPanel } from './send-panel'
+import { SignalDraftExtras } from './linkedin-draft'
 
 const CONCURRENCY = 3
 const EMAIL_1_MAX_WORDS = 90
@@ -158,6 +159,8 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
           )}
         </div>
       )}
+
+      {hook === 'job_post' && <SignalDraftExtras email={email} lead={lead} />}
 
       {reviewed ? (
         <div className="space-y-2">

@@ -243,6 +243,7 @@ Block if:
 - **Canada (CASL):** `country = 'CA'` and `email_source` is not `website`, or the country is unknown
 - the lead was sent outreach within `resequence_cooldown_days` (180)
 - another lead in the same run has the same lowercased email
+- the lead already has a draft, approved or queued email in another run (the daily Buying signals run drafts leads that are still in New)
 
 The CASL basis for each lead is its `email_source`: the address was published by the business, and the pitch relates to their role. Website-found emails from the audit (§5) give Places leads this basis automatically. **Confirm the CASL details with a lawyer before scaling Canadian sends** (Build Plan).
 
@@ -287,6 +288,7 @@ No links, no tracking pixel. The inbox sync turns STOP/unsubscribe replies into 
   - No fake familiarity, no invented claims, no fake case studies. The Jo case study is used only once it's written and approved
   - Subject lines: lowercase, 2–5 words, no clickbait
   - Sound like a person from Ottawa who's worked the Home Depot Pro Desk, not a marketing agency
+- **Buying-signal leads (stage 8.1b):** when the lead has a fit job post from the last 30 days, the primary hook is `job_post` ("Hiring for work OBATEK automates") whatever the site check found. The brief gets a `<buying_signal>` block (job title, posted date, up to 500 characters of the post as quoted data). The prompt says: lead with the post plainly ("Saw you're hiring an appointment setter"), name the work that hire is meant to fix, never suggest they shouldn't hire, no pay, no saying where the post was seen. Claude also writes a **LinkedIn connection note** (300 characters or less, no links), checked by `draftProblems` and saved in `outreach_emails.linkedin_draft`. The Write step shows a "Signal: hiring …" chip, the job link, and the note with **Copy** and a link to the hiring person's (or company's) LinkedIn. LinkedIn is sent by hand: no automated requests, messages or profile scraping.
 - Invalid JSON is retried once. After that, the opener is left blank for you to write.
 
 ---
@@ -371,7 +373,7 @@ Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both 
 - Every 5 minutes it calls `POST localhost:3000/api/outreach/cron/tick` with `Authorization: Bearer $CRON_SECRET`. Set `OUTREACH_APP_URL` to change the address. The middleware lets this path through without a session, and the route checks the secret itself.
 - **Each tick:**
   1. **Start due runs** (`scheduler.ts`), up to 2 a tick. The claim is atomic, so a run can't start twice. A run re-gathers the New stage with the same `gather.ts` as the pop-up, skips leads unticked when it was scheduled and leads below the score threshold, and records blocked leads.
-  - **Pull buying signals** once a day after `signal_pull_hour`, when `THEIRSTACK_API_KEY` is set (§3).
+  - **Buying signals** (when `THEIRSTACK_API_KEY` is set, §3): pull once a day after `signal_pull_hour`; site-check up to 4 new signal leads a tick (within `audit_daily_cap`); then add checked signal leads in New that pass the compliance gate (and aren't off-target) to today's **Buying signals** run, once each. That run has `auto_prepare`, so step 2 drafts it. Leads with no email after the site check stay out of the run: look them up in Lusha or call them.
   2. **Write drafts:** up to `cron_drafts_per_tick` (5) for scheduler-started runs, with the same `prepare-email.ts` as the Write step. The daily draft cap still applies.
   3. **Read the inbox** (replies, bounces, opt-outs).
   4. **Send what's due:** follow-ups, then queued first emails, then seed copies, with settings read again (step 3 may have paused sending).
@@ -507,8 +509,8 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
 | 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
 | 3 | 7.4 | `015_agencies.sql`; agency vertical and template; Agencies (US) batch search; agency profile in the site check (services, GoHighLevel, off-target); staff range per vertical; agency hooks and copy | 300+ agencies in New; branding/social/enterprise ones score below zero; openers talk about their inquiries, not their site |
-| 4 | 8.1a | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |
-| 4 | 8.1b | Signal leads audited automatically; `job_post` hook and a LinkedIn note drafted with the email; a daily "Buying signals" run for one-click review | 10–20 signal emails a day approved; 10%+ reply rate |
+| 4 | 8.1a ✅ | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |
+| 4 | 8.1b ✅ | Signal leads audited automatically; `job_post` hook and a LinkedIn note drafted with the email; a daily "Buying signals" run for one-click review | 10–20 signal emails a day approved; 10%+ reply rate |
 | 4 | 8 | Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
 | later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |

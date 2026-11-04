@@ -15,6 +15,12 @@ const DraftSchema = z.object({
   opener: z.string(),
 })
 
+// Leads with a buying signal also get a LinkedIn note, sent by hand
+const SignalDraftSchema = DraftSchema.extend({ linkedin: z.string() })
+
+// LinkedIn's limit for a connection note
+export const LINKEDIN_NOTE_MAX = 300
+
 export interface CopyExample {
   vertical: string | null
   subject: string
@@ -32,11 +38,21 @@ export interface DraftInput {
   rules: string[]
   // Redraft of an earlier draft with the team's feedback on it
   revision?: { subject: string; opener: string; feedback: string }
+  // The job post that makes this lead worth writing to now (§3)
+  signal?: BuyingSignalBrief | null
+}
+
+export interface BuyingSignalBrief {
+  job_title: string
+  posted_at: string | null
+  excerpt: string | null
 }
 
 export interface Draft {
   subject: string
   opener: string
+  // Empty unless the lead has a buying signal
+  linkedin: string
   model: string
   // Problems that made us discard Claude's text, if any
   problems: string[]
@@ -52,8 +68,8 @@ const ABSENCE_CLAIM =
 // Checks the draft against the copy rules; untrusted page text reaches the
 // model, so nothing that fails here is used (§16 S3)
 export function draftProblems(
-  draft: { subject: string; opener: string },
-  { hook }: { hook?: OutreachHook } = {}
+  draft: { subject: string; opener: string; linkedin?: string },
+  { hook, signal }: { hook?: OutreachHook; signal?: BuyingSignalBrief | null } = {}
 ): string[] {
   const problems: string[] = []
   const subject = draft.subject.trim()
@@ -74,6 +90,14 @@ export function draftProblems(
     problems.push('Opener claims something is missing; describe what their current process costs them instead')
   }
   if (/^(hi|hey|hello|dear)\b/i.test(opener)) problems.push('Opener repeats the greeting')
+
+  if (signal) {
+    const note = (draft.linkedin ?? '').trim()
+    if (note.length < 20) problems.push('LinkedIn note is missing or too short')
+    if (note.length > LINKEDIN_NOTE_MAX) problems.push(`LinkedIn note is over ${LINKEDIN_NOTE_MAX} characters`)
+    if (CONTACT_DETAILS.test(note)) problems.push('LinkedIn note has links or contact details')
+    if (BANNED_PHRASES.test(note)) problems.push('LinkedIn note uses a banned phrase')
+  }
   return problems
 }
 
@@ -82,7 +106,7 @@ function quoted(text: string, max = 300): string {
   return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-export function leadBrief({ lead, audit, hook, offer, examples, revision }: DraftInput): string {
+export function leadBrief({ lead, audit, hook, offer, examples, revision, signal }: DraftInput): string {
   const findings = audit
     ? auditFindings(audit, lead.vertical).filter((f) => !f.startsWith('Owner (from site') && !f.startsWith(BIG_CLIENT_NOTE))
     : []
@@ -109,6 +133,16 @@ export function leadBrief({ lead, audit, hook, offer, examples, revision }: Draf
     ...(findings.length ? findings.map((f) => `- ${quoted(f, 200)}`) : ['- No site check available']),
     '</website_findings>',
   ]
+  if (signal) {
+    lines.push(
+      '',
+      '<buying_signal>',
+      `Job post: ${quoted(signal.job_title, 120)}`,
+      signal.posted_at ? `Posted: ${signal.posted_at}` : null,
+      signal.excerpt ? `From the post: "${quoted(signal.excerpt, 500)}"` : null,
+      '</buying_signal>'
+    )
+  }
   if (reviews.length) {
     lines.push('', '<review_snippets>', ...reviews.map((r) => `- "${quoted(r, 200)}"`), '</review_snippets>')
   }
@@ -131,10 +165,12 @@ export function leadBrief({ lead, audit, hook, offer, examples, revision }: Draf
       '',
       `<feedback_from_dami>${quoted(revision.feedback, 500)}</feedback_from_dami>`,
       '',
-      'Rewrite the subject and opener for this lead using the feedback.'
+      signal
+        ? 'Rewrite the subject, opener and LinkedIn note for this lead using the feedback.'
+        : 'Rewrite the subject and opener for this lead using the feedback.'
     )
   } else {
-    lines.push('', 'Write the subject and opener for this lead.')
+    lines.push('', signal ? 'Write the subject, opener and LinkedIn note for this lead.' : 'Write the subject and opener for this lead.')
   }
   return lines.filter((line) => line !== null).join('\n')
 }
@@ -160,7 +196,10 @@ function anthropic() {
   return client
 }
 
-async function requestDraft(input: DraftInput, feedback: string[]): Promise<{ subject: string; opener: string; model: string }> {
+async function requestDraft(
+  input: DraftInput,
+  feedback: string[]
+): Promise<{ subject: string; opener: string; linkedin?: string; model: string }> {
   const content = feedback.length
     ? `${leadBrief(input)}\n\nYour last attempt broke these rules: ${feedback.join('; ')}. Try again.`
     : leadBrief(input)
@@ -173,7 +212,7 @@ async function requestDraft(input: DraftInput, feedback: string[]): Promise<{ su
     fallbacks: 'default',
     system: systemBlocks(input.rules),
     messages: [{ role: 'user', content }],
-    output_config: { format: betaZodOutputFormat(DraftSchema), effort: 'medium' },
+    output_config: { format: betaZodOutputFormat(input.signal ? SignalDraftSchema : DraftSchema), effort: 'medium' },
   })
 
   if (response.stop_reason === 'refusal') {
@@ -195,11 +234,12 @@ export async function draftWithClaude(input: DraftInput): Promise<Draft> {
     problems = draftProblems(attempt, input)
   }
   if (problems.length) {
-    return { subject: '', opener: '', model: attempt.model, problems }
+    return { subject: '', opener: '', linkedin: '', model: attempt.model, problems }
   }
   return {
     subject: attempt.subject.trim().toLowerCase().replace(/[.!?]+$/, ''),
     opener: attempt.opener.trim(),
+    linkedin: input.signal ? (attempt.linkedin ?? '').trim() : '',
     model: attempt.model,
     problems: [],
   }

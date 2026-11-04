@@ -8,7 +8,13 @@ import {
   useActiveOutreachRuns,
   useCancelOutreachRun,
 } from '@/lib/queries/outreach'
-import type { OutreachRunStatus } from '@/types/database'
+import type { OutreachRun, OutreachRunStatus } from '@/types/database'
+
+// The tick's daily run of job-post leads (§3)
+function isSignalRun(run: OutreachRun): boolean {
+  const summary = run.summary
+  return !!summary && typeof summary === 'object' && !Array.isArray(summary) && summary.kind === 'signals'
+}
 
 const STATUS_LABELS: Record<OutreachRunStatus, string> = {
   scheduled: 'Scheduled',
@@ -48,6 +54,7 @@ export function ActiveRuns({ onReview }: { onReview?: (runId: string) => void })
               <Badge variant={run.status === 'scheduled' ? 'outline' : 'secondary'}>
                 {STATUS_LABELS[run.status]}
               </Badge>
+              {isSignalRun(run) && <span className="font-medium">Buying signals</span>}
               <span>{format(new Date(run.scheduled_for), 'PPp')}</span>
               <span className="text-xs text-muted-foreground">{run.mode}</span>
             </div>

@@ -5,7 +5,7 @@ import { auditFindings, parseAudit } from './audit-findings'
 // One question per pain signal, asked in this order of preference
 const CALL_QUESTIONS: [PainSignal, string][] = [
   ['slow_callback_reviews', "When you're out on a job, who picks up the phone?"],
-  ['hiring', "What's the new office hire going to take off your plate?"],
+  ['hiring', "What's the person you're hiring going to take off your plate?"],
   ['no_booking', 'How do customers ask you for a quote after hours?'],
   ['no_site', 'How do most new customers find you right now?'],
   ['dead_site', 'Did you know your website is down? How are people finding you meanwhile?'],

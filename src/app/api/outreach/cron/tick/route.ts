@@ -3,7 +3,7 @@ import { hasValidCronSecret } from '@/lib/api/guards'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getMailboxAccess, type MailboxAccess } from '@/lib/email/mailbox'
 import { fetchSettings } from '@/lib/outreach/adapters/obatek-crm'
-import { draftPending, startDueRuns } from '@/lib/outreach/scheduler'
+import { auditSignalLeads, draftPending, queueSignalLeads, startDueRuns } from '@/lib/outreach/scheduler'
 import { sendDue } from '@/lib/outreach/send-queue'
 import { syncInbox } from '@/lib/outreach/inbox-sync'
 import { pullSignals } from '@/lib/outreach/signal-pull'
@@ -13,8 +13,8 @@ function errorMessage(error: unknown) {
 }
 
 // Called every 5 minutes by scripts/outreach-scheduler.mjs (§11): start due
-// runs, pull buying signals (once a day), write a few drafts, read the
-// mailbox, then send what's due from it.
+// runs, pull buying signals (once a day) and queue the checked ones, write
+// a few drafts, read the mailbox, then send what's due from it.
 // Each part runs even if an earlier one fails.
 export async function POST(request: NextRequest) {
   if (!hasValidCronSecret(request)) {
@@ -50,6 +50,21 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         summary.signalError = errorMessage(error)
+      }
+
+      // Site checks for new signal leads, then the checked ones into
+      // today's Buying signals run (drafted below)
+      try {
+        const placesKey = process.env.GOOGLE_PLACES_API_KEY
+        const audits = await auditSignalLeads(crm, settings, {
+          placesKey,
+          pagespeedKey: process.env.PAGESPEED_API_KEY || placesKey,
+        }, now)
+        if (audits.audited || audits.errors.length) summary.signalAudits = audits
+        const run = await queueSignalLeads(crm, settings, now)
+        if (run.added) summary.signalRun = run
+      } catch (error) {
+        summary.signalRunError = errorMessage(error)
       }
     }
 

@@ -7,6 +7,7 @@ import {
   fetchLead,
   fetchOutreachEmail,
   fetchSettings,
+  fetchSignalsForLead,
   markRunAwaitingReview,
   saveCopyFeedback,
   updateOutreachEmail,
@@ -21,6 +22,9 @@ import { parseSteps, renderSteps, templateFor, templateVars, type PrepareEmailRe
 // /api/outreach/prepare (the Write step) and the scheduler's tick.
 
 type Crm = SupabaseClient<Database>
+
+// A job post older than this no longer leads the email
+const SIGNAL_MAX_AGE_DAYS = 30
 
 export class PrepareError extends Error {
   constructor(message: string, readonly status: number) {
@@ -80,7 +84,11 @@ export async function prepareEmail(
     lead = fresh.lead
     audit = fresh.audit
   }
-  const hook = audit ? primaryHook(audit, lead.vertical) : 'generic'
+  // A recent job post beats anything the site check found (§3)
+  const signal = (await fetchSignalsForLead(crm, lead.id, 5)).find(
+    (s) => s.fit === 'fit' && Date.now() - new Date(s.created_at).getTime() <= SIGNAL_MAX_AGE_DAYS * 86_400_000
+  )
+  const hook = signal ? 'job_post' : audit ? primaryHook(audit, lead.vertical) : 'generic'
 
   const [examples, rules] = await Promise.all([
     fetchCopyExamples(crm, lead.vertical, settings.example_max_in_prompt),
@@ -94,6 +102,7 @@ export async function prepareEmail(
     offer: settings.offer_description,
     examples,
     rules,
+    signal: signal && { job_title: signal.job_title, posted_at: signal.posted_at, excerpt: signal.excerpt },
     revision: feedback && {
       subject: feedback.subject ?? parseSteps(email.steps)[0]?.subject ?? '',
       opener: feedback.opener ?? email.opener ?? '',
@@ -120,6 +129,7 @@ export async function prepareEmail(
     audit: (audit ?? {}) as unknown as Json,
     primary_hook: hook,
     opener: draft.opener || null,
+    linkedin_draft: draft.linkedin || null,
     steps: steps as unknown as Json,
     // A rejected draft isn't Claude's; whatever Dami writes is "human"
     draft_steps: draft.problems.length ? null : (steps as unknown as Json),

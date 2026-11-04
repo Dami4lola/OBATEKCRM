@@ -21,7 +21,7 @@ export const PAIN_SIGNAL_LABELS: Record<PainSignal, string> = {
   dead_site: 'Website is down',
   no_booking: 'No online booking or quote form',
   slow_callback_reviews: 'Reviews mention slow callbacks',
-  hiring: 'Hiring an office admin or dispatcher',
+  hiring: 'Hiring for sales, booking or admin help (job post)',
 }
 
 export interface ScoreReason {

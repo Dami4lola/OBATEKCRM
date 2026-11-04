@@ -1,6 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Lead, OutreachEmailInsert, Stage } from '@/types/database'
-import { fetchLastSentAt, fetchLeadsInStage, fetchSuppressions, findStageByName } from './adapters/obatek-crm'
+import {
+  fetchLastSentAt,
+  fetchLeadIdsInOpenEmails,
+  fetchLeadsInStage,
+  fetchSuppressions,
+  findStageByName,
+} from './adapters/obatek-crm'
 import { blockedReason, checkLeads, type GatherWarning } from './compliance'
 import { scoreLead, type LeadScore } from './scoring'
 import type { OutreachSettings } from './settings'
@@ -33,9 +39,11 @@ export async function gatherLeads(
   }
 
   const leads = await fetchLeadsInStage(crm, stage.id)
-  const [suppressions, lastSentAt] = await Promise.all([
+  const [suppressions, lastSentAt, inOpenRun] = await Promise.all([
     fetchSuppressions(crm),
     fetchLastSentAt(crm, leads.map((l) => l.id)),
+    // The daily Buying signals run drafts leads that are still in New
+    fetchLeadIdsInOpenEmails(crm, leads.map((l) => l.id)),
   ])
   const warnings = checkLeads(leads, {
     suppressedEmails: suppressions.emails,
@@ -43,6 +51,7 @@ export async function gatherLeads(
     lastSentAt,
     cooldownDays: settings.resequence_cooldown_days,
     now,
+    inOpenRun,
   })
 
   const rows = leads.map((lead) => {

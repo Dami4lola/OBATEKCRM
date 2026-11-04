@@ -6,6 +6,7 @@ export type GatherWarningCode =
   | 'casl'
   | 'no_country'
   | 'cooldown'
+  | 'in_run'
   | 'duplicate_email'
   | 'no_website'
   | 'low_score'
@@ -23,6 +24,8 @@ export interface ComplianceContext {
   lastSentAt: Map<string, Date> // lead id -> most recent outreach send
   cooldownDays: number
   now: Date
+  // Leads with a draft, approved or queued email in some run already
+  inOpenRun?: Set<string>
 }
 
 export function emailDomain(email: string): string | null {
@@ -71,6 +74,14 @@ export function checkLead(lead: Lead, ctx: ComplianceContext): GatherWarning[] {
         blocking: true,
       })
     }
+  }
+
+  if (ctx.inOpenRun?.has(lead.id)) {
+    warnings.push({
+      code: 'in_run',
+      message: 'Already in another run (draft, approved or queued)',
+      blocking: true,
+    })
   }
 
   if (!lead.website) {

@@ -630,3 +630,87 @@ export async function fetchSignalsForLead(crm: Crm, leadId: string, limit = 10):
   if (error) throw error
   return data || []
 }
+
+// Fit posts linked to a lead since a moment, newest first
+export async function fetchRecentFitSignals(crm: Crm, since: Date): Promise<LeadSignal[]> {
+  const { data, error } = await crm
+    .from('lead_signals')
+    .select('*')
+    .eq('fit', 'fit')
+    .in('status', ['lead_created', 'matched_existing'])
+    .not('lead_id', 'is', null)
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(500)
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchLeadsByIds(crm: Crm, ids: string[]): Promise<Lead[]> {
+  const leads: Lead[] = []
+  for (const part of chunk(ids, 200)) {
+    const { data, error } = await crm.from('leads').select('*').in('id', part)
+    if (error) throw error
+    leads.push(...(data || []))
+  }
+  return leads
+}
+
+// Leads that already have an email in some run since a moment: a signal
+// lead goes into one run, not one a day
+export async function fetchLeadIdsWithEmailsSince(crm: Crm, leadIds: string[], since: Date): Promise<Set<string>> {
+  const found = new Set<string>()
+  for (const part of chunk(leadIds, 200)) {
+    const { data, error } = await crm
+      .from('outreach_emails')
+      .select('lead_id')
+      .in('lead_id', part)
+      .gte('created_at', since.toISOString())
+    if (error) throw error
+    for (const row of data || []) found.add(row.lead_id)
+  }
+  return found
+}
+
+// Today's Buying signals run, still open for review, or a new one. Its
+// drafts are written by the tick like a scheduled run's.
+export async function getOrCreateSignalRun(crm: Crm, day: string, now: Date): Promise<OutreachRun> {
+  const { data: open, error } = await crm
+    .from('outreach_runs')
+    .select('*')
+    .in('status', ['preparing', 'awaiting_review'])
+    .eq('summary->>kind', 'signals')
+    .eq('summary->>day', day)
+    .limit(1)
+  if (error) throw error
+  if (open && open[0]) return open[0]
+
+  const { data, error: insertError } = await crm
+    .from('outreach_runs')
+    .insert({
+      status: 'preparing',
+      mode: 'manual',
+      scheduled_for: now.toISOString(),
+      started_at: now.toISOString(),
+      summary: { kind: 'signals', day, auto_prepare: true },
+    })
+    .select()
+    .single()
+  if (insertError) throw insertError
+  return data
+}
+
+// Leads with an email still on its way (draft, approved or queued) in any run
+export async function fetchLeadIdsInOpenEmails(crm: Crm, leadIds: string[]): Promise<Set<string>> {
+  const found = new Set<string>()
+  for (const part of chunk(leadIds, 200)) {
+    const { data, error } = await crm
+      .from('outreach_emails')
+      .select('lead_id')
+      .in('lead_id', part)
+      .in('status', ['draft', 'approved', 'queued'])
+    if (error) throw error
+    for (const row of data || []) found.add(row.lead_id)
+  }
+  return found
+}
