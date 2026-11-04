@@ -8,6 +8,7 @@ import type {
   LeadSignal,
   LeadSignalInsert,
   LeadSignalUpdate,
+  LeadSource,
   LeadUpdate,
   Json,
   OutreachEmail,
@@ -83,11 +84,11 @@ export async function fetchExistingContacts(crm: Crm): Promise<ExistingContacts>
   return existingContactsFrom(rows)
 }
 
-export async function countLeadsSourcedSince(crm: Crm, since: Date): Promise<number> {
+export async function countLeadsSourcedSince(crm: Crm, since: Date, source: LeadSource = 'places'): Promise<number> {
   const { count, error } = await crm
     .from('leads')
     .select('id', { count: 'exact', head: true })
-    .eq('lead_source', 'places')
+    .eq('lead_source', source)
     .gte('created_at', since.toISOString())
   if (error) throw error
   return count ?? 0
@@ -736,4 +737,28 @@ export async function fetchLeadIdsInOpenEmails(crm: Crm, leadIds: string[]): Pro
     for (const row of data || []) found.add(row.lead_id)
   }
   return found
+}
+
+// ---------- Other lead sources (019) ----------
+
+// Licence and filing refs already imported, and every lead's company name
+// in its state, so a brokerage found on Google Maps first isn't added again
+export async function fetchImportedKeys(
+  crm: Crm
+): Promise<{ sourceRefs: Set<string>; companies: { name: string | null; region: string | null }[] }> {
+  const sourceRefs = new Set<string>()
+  const companies: { name: string | null; region: string | null }[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await crm
+      .from('leads')
+      .select('source_ref, company_name, region')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    for (const row of data || []) {
+      if (row.source_ref) sourceRefs.add(row.source_ref)
+      companies.push({ name: row.company_name, region: row.region })
+    }
+    if (!data || data.length < PAGE_SIZE) break
+  }
+  return { sourceRefs, companies }
 }

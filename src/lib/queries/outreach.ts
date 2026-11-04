@@ -14,6 +14,7 @@ import type {
   OutreachRunStatus,
   Stage,
 } from '@/types/database'
+import type { LicenseImportResult, LicenseState } from '@/lib/outreach/license-lists'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
 import type { AuditLeadResult } from '@/lib/outreach/audit-findings'
 
@@ -205,6 +206,35 @@ export function useSourceLeads() {
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || 'Failed to find leads')
       return body as SourceLeadsResult
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+export interface LicenseImportInput {
+  state: LicenseState
+  counties: string[]
+  limit: number
+  newFirst: boolean
+}
+
+// Find leads → State lists: licensed brokerages from a state's open data
+export function useImportLicenses() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: LicenseImportInput): Promise<LicenseImportResult> => {
+      const response = await fetch('/api/outreach/licenses/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Failed to import the licence list')
+      return body as LicenseImportResult
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })

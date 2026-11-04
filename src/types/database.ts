@@ -8,7 +8,16 @@ export type Json =
 
 // Outreach unions, shared across Row/Insert/Update below
 export type EmailSource = 'website' | 'lusha' | 'manual' | 'referral' | 'other'
-export type LeadSource = 'places' | 'lusha' | 'import' | 'manual' | 'referral' | 'other' | 'theirstack'
+export type LeadSource =
+  | 'places'
+  | 'lusha'
+  | 'import'
+  | 'manual'
+  | 'referral'
+  | 'other'
+  | 'theirstack'
+  | 'state_license'
+  | 'state_filing'
 export type TaskKind = 'general' | 'call'
 export type OutreachRunStatus =
   | 'scheduled'
@@ -36,6 +45,7 @@ export type OutreachHook =
   | 'job_post'
 export type OutreachAuthor = 'human' | 'claude' | 'claude_edited'
 export type SignalSource = 'theirstack' | 'manual'
+export type SignalKind = 'job_post' | 'technology'
 export type SignalFit = 'pending' | 'fit' | 'not_fit'
 export type SignalTarget = 'agency' | 'trades' | 'dealer' | 'property' | 'other'
 export type SignalStatus = 'new' | 'lead_created' | 'matched_existing' | 'discarded'
@@ -145,6 +155,7 @@ export interface Database {
           linkedin_url: string | null
           email_source: EmailSource | null
           lead_source: LeadSource | null
+          source_ref: string | null
           google_place_id: string | null
           google_rating: number | null
           google_review_count: number | null
@@ -176,6 +187,7 @@ export interface Database {
           linkedin_url?: string | null
           email_source?: EmailSource | null
           lead_source?: LeadSource | null
+          source_ref?: string | null
           google_place_id?: string | null
           google_rating?: number | null
           google_review_count?: number | null
@@ -207,6 +219,7 @@ export interface Database {
           linkedin_url?: string | null
           email_source?: EmailSource | null
           lead_source?: LeadSource | null
+          source_ref?: string | null
           google_place_id?: string | null
           google_rating?: number | null
           google_review_count?: number | null
@@ -587,9 +600,9 @@ export interface Database {
           lead_id: string | null
           source: SignalSource
           external_id: string
-          kind: 'job_post'
+          kind: SignalKind
           region: string | null
-          job_title: string
+          job_title: string | null
           matched_term: string | null
           job_url: string | null
           posted_at: string | null
@@ -615,9 +628,9 @@ export interface Database {
           lead_id?: string | null
           source: SignalSource
           external_id: string
-          kind?: 'job_post'
+          kind?: SignalKind
           region?: string | null
-          job_title: string
+          job_title?: string | null
           matched_term?: string | null
           job_url?: string | null
           posted_at?: string | null
@@ -643,9 +656,9 @@ export interface Database {
           lead_id?: string | null
           source?: SignalSource
           external_id?: string
-          kind?: 'job_post'
+          kind?: SignalKind
           region?: string | null
-          job_title?: string
+          job_title?: string | null
           matched_term?: string | null
           job_url?: string | null
           posted_at?: string | null

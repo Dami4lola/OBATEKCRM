@@ -55,6 +55,20 @@ export interface OutreachSettings {
   signal_pull_hour: number
   signal_fit_model: string
   signals_pulled_at: string | null
+  // State licence lists and other sources (019)
+  license_daily_lead_cap: number
+  // State code -> counties around the target cities
+  license_counties: Record<string, string[]>
+  tech_targets: TechTarget[]
+  // Companies a day from the software search (3 TheirStack credits each)
+  tech_daily_companies: number
+}
+
+// A TheirStack technology slug and the vertical its users get
+export interface TechTarget {
+  slug: string
+  label: string
+  vertical: string
 }
 
 export interface SignalPlace {
@@ -88,7 +102,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql, 017_buying_signals.sql and 018_property.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql, 017_buying_signals.sql, 018_property.sql and 019_lead_sources.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -245,6 +259,22 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   signal_pull_hour: 7,
   signal_fit_model: 'claude-haiku-5-5',
   signals_pulled_at: null,
+  license_daily_lead_cap: 200,
+  license_counties: {
+    TX: ['Harris', 'Fort Bend', 'Montgomery', 'Dallas', 'Collin', 'Denton', 'Tarrant', 'Travis', 'Williamson', 'Hays', 'Bexar'],
+    NY: ['New York', 'Kings', 'Queens', 'Bronx', 'Richmond', 'Erie', 'Monroe', 'Albany'],
+    IL: ['Cook', 'DuPage', 'Will', 'Lake', 'Kane'],
+    FL: ['Miami-Dade', 'Broward', 'Hillsborough', 'Pinellas', 'Orange', 'Duval'],
+  },
+  tech_targets: [
+    { slug: 'gohighlevel', label: 'GoHighLevel', vertical: 'agency' },
+    { slug: 'appfolio', label: 'AppFolio', vertical: 'property' },
+    { slug: 'buildium', label: 'Buildium', vertical: 'property' },
+    { slug: 'rent-manager', label: 'Rent Manager', vertical: 'property' },
+    { slug: 'propertyware', label: 'Propertyware', vertical: 'property' },
+    { slug: 'kvcore', label: 'kvCORE', vertical: 'property' },
+  ],
+  tech_daily_companies: 50,
 }
 
 // Missing or unknown keys fall back to the defaults

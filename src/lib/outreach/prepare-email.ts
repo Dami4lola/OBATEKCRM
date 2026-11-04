@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Json } from '@/types/database'
+import type { Database, Json, LeadSignal } from '@/types/database'
 import {
   countDraftsSince,
   fetchCopyExamples,
@@ -85,8 +85,12 @@ export async function prepareEmail(
     audit = fresh.audit
   }
   // A recent job post beats anything the site check found (§3)
-  const signal = (await fetchSignalsForLead(crm, lead.id, 5)).find(
-    (s) => s.fit === 'fit' && Date.now() - new Date(s.created_at).getTime() <= SIGNAL_MAX_AGE_DAYS * 86_400_000
+  const signal = (await fetchSignalsForLead(crm, lead.id, 10)).find(
+    (s): s is LeadSignal & { job_title: string } =>
+      s.kind === 'job_post' &&
+      s.fit === 'fit' &&
+      !!s.job_title &&
+      Date.now() - new Date(s.created_at).getTime() <= SIGNAL_MAX_AGE_DAYS * 86_400_000
   )
   const hook = signal ? 'job_post' : audit ? primaryHook(audit, lead.vertical) : 'generic'
 

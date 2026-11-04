@@ -26,8 +26,16 @@ import { VERTICALS } from '@/lib/validations/lead'
 import { useOutreachSettings, useSourceLeads } from '@/lib/queries/outreach'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
 import { BATCH_TARGETS, UsBatchSearch } from './us-batch-search'
+import { StateLists } from './state-lists'
 
 const RESULT_OPTIONS = [20, 40, 60]
+
+const MODE_LABELS = {
+  single: 'One search',
+  agency: 'Agencies (US)',
+  property: 'Property (US)',
+  licenses: 'State lists (US)',
+} as const
 
 function verticalLabel(vertical: string) {
   return vertical.replace(/_/g, ' ')
@@ -42,8 +50,8 @@ export function FindLeadsDialog() {
   const [country, setCountry] = useState('CA')
   const [maxResults, setMaxResults] = useState(20)
   const [result, setResult] = useState<SourceLeadsResult | null>(null)
-  // One search, or a batch across the US target states
-  const [mode, setMode] = useState<'single' | 'agency' | 'property'>('single')
+  // One search, a batch across the US target states, or a state licence list
+  const [mode, setMode] = useState<'single' | 'agency' | 'property' | 'licenses'>('single')
 
   const sourceLeads = useSourceLeads()
   const { data: settings } = useOutreachSettings()
@@ -89,7 +97,9 @@ export function FindLeadsDialog() {
           <DialogTitle>{result ? 'Leads added' : 'Find leads'}</DialogTitle>
           {!result && (
             <DialogDescription>
-              Searches Google for local businesses and adds new ones to New.
+              {mode === 'licenses'
+                ? 'Imports licensed brokerages from official state data and adds new ones to New.'
+                : 'Searches Google for local businesses and adds new ones to New.'}{' '}
               Businesses already in the CRM are skipped.
             </DialogDescription>
           )}
@@ -97,20 +107,22 @@ export function FindLeadsDialog() {
 
         {!result && (
           <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
-            {(['single', 'agency', 'property'] as const).map((m) => (
+            {(['single', 'agency', 'property', 'licenses'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setMode(m)}
                 className={`flex-1 rounded px-2 py-1 ${mode === m ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground'}`}
               >
-                {m === 'single' ? 'One search' : m === 'agency' ? 'Agencies (US)' : 'Property (US)'}
+                {MODE_LABELS[m]}
               </button>
             ))}
           </div>
         )}
 
-        {mode !== 'single' && !result ? (
+        {mode === 'licenses' && !result ? (
+          <StateLists onDone={() => handleOpenChange(false)} />
+        ) : (mode === 'agency' || mode === 'property') && !result ? (
           <UsBatchSearch
             key={mode}
             target={BATCH_TARGETS[mode]}
