@@ -6,6 +6,7 @@ import {
   parseOutreachSettings,
   type OutreachSettings,
 } from '@/lib/outreach/settings'
+import { cancelRun } from '@/lib/outreach/adapters/obatek-crm'
 import { gatherLeads, runEmailRows, type GatherRow } from '@/lib/outreach/gather'
 import type {
   Lead,
@@ -58,6 +59,8 @@ export function useOutreachGather(enabled: boolean) {
   return useQuery({
     queryKey: ['outreach', 'gather'],
     enabled,
+    // Fresh every time the pop-up opens: the scheduler changes runs too
+    staleTime: 0,
     queryFn: async (): Promise<GatherResult> => {
       const settings = await fetchSettings(supabase)
       const { stage, rows } = await gatherLeads(supabase, settings)
@@ -71,6 +74,9 @@ export function useActiveOutreachRuns() {
 
   return useQuery({
     queryKey: ['outreach', 'runs', 'active'],
+    // The scheduler starts and finishes runs without the page knowing
+    staleTime: 0,
+    refetchInterval: 30_000,
     queryFn: async (): Promise<OutreachRun[]> => {
       const { data, error } = await supabase
         .from('outreach_runs')
@@ -170,14 +176,7 @@ export function useCancelOutreachRun() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (id: string): Promise<void> => {
-      const { error } = await supabase
-        .from('outreach_runs')
-        .update({ status: 'cancelled', finished_at: new Date().toISOString() })
-        .eq('id', id)
-
-      if (error) throw error
-    },
+    mutationFn: (id: string) => cancelRun(supabase, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['outreach'] })
     },

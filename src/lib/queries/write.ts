@@ -29,6 +29,9 @@ export function useRunEmails(runId: string | null) {
   return useQuery({
     queryKey: ['outreach', 'run-emails', runId],
     enabled: !!runId,
+    // The scheduler writes drafts and sends while this is open
+    staleTime: 0,
+    refetchInterval: 30_000,
     queryFn: async (): Promise<RunEmail[]> => {
       const { data, error } = await supabase
         .from('outreach_emails')

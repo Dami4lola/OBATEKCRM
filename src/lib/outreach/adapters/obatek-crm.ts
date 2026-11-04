@@ -13,6 +13,7 @@ import type {
   Json,
   OutreachEmail,
   OutreachEmailInsert,
+  OutreachEmailStatus,
   OutreachEmailUpdate,
   OutreachMessage,
   OutreachMessageInsert,
@@ -31,6 +32,9 @@ import type { SentEmail } from '../inbox-events'
 type Crm = SupabaseClient<Database>
 
 const PAGE_SIZE = 1000
+
+// Emails that haven't gone out yet
+const OPEN_EMAIL_STATUSES: OutreachEmailStatus[] = ['draft', 'approved', 'queued']
 
 export async function fetchSettings(crm: Crm): Promise<OutreachSettings> {
   const { data, error } = await crm.from('outreach_settings').select('*')
@@ -726,19 +730,53 @@ export async function getOrCreateSignalRun(crm: Crm, day: string, now: Date): Pr
   return data
 }
 
-// Leads with an email still on its way (draft, approved or queued) in any run
+// Leads with an email still on its way (draft, approved or queued). Emails
+// left behind in a cancelled or failed run don't count: the lead is free.
 export async function fetchLeadIdsInOpenEmails(crm: Crm, leadIds: string[]): Promise<Set<string>> {
   const found = new Set<string>()
   for (const part of chunk(leadIds, 200)) {
     const { data, error } = await crm
       .from('outreach_emails')
-      .select('lead_id')
+      .select('lead_id, run_id')
       .in('lead_id', part)
-      .in('status', ['draft', 'approved', 'queued'])
+      .in('status', OPEN_EMAIL_STATUSES)
     if (error) throw error
-    for (const row of data || []) found.add(row.lead_id)
+    const rows = data || []
+
+    const runIds = [...new Set(rows.map((row) => row.run_id).filter((id): id is string => !!id))]
+    const dead = new Set<string>()
+    for (const runs of chunk(runIds, 200)) {
+      const { data: deadRuns, error: runsError } = await crm
+        .from('outreach_runs')
+        .select('id')
+        .in('id', runs)
+        .in('status', ['cancelled', 'failed'])
+      if (runsError) throw runsError
+      for (const run of deadRuns || []) dead.add(run.id)
+    }
+
+    for (const row of rows) {
+      if (!row.run_id || !dead.has(row.run_id)) found.add(row.lead_id)
+    }
   }
   return found
+}
+
+// Stops a run: its unsent emails are skipped first, so a queued one can't
+// go out afterwards and its leads can join a new run
+export async function cancelRun(crm: Crm, runId: string): Promise<void> {
+  const { error: emailsError } = await crm
+    .from('outreach_emails')
+    .update({ status: 'skipped' })
+    .eq('run_id', runId)
+    .in('status', OPEN_EMAIL_STATUSES)
+  if (emailsError) throw emailsError
+
+  const { error } = await crm
+    .from('outreach_runs')
+    .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+    .eq('id', runId)
+  if (error) throw error
 }
 
 // ---------- Other lead sources (019) ----------

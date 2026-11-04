@@ -265,7 +265,7 @@ Block if:
 - **Canada (CASL):** `country = 'CA'` and `email_source` is not `website`, or the country is unknown
 - the lead was sent outreach within `resequence_cooldown_days` (180)
 - another lead in the same run has the same lowercased email
-- the lead already has a draft, approved or queued email in another run (the daily Buying signals run drafts leads that are still in New)
+- the lead already has a draft, approved or queued email in another live run (the daily Buying signals run drafts leads that are still in New). Cancelled and failed runs don't count: cancelling a run skips its unsent emails, so nothing queued goes out and its leads can join a new run
 
 The CASL basis for each lead is its `email_source`: the address was published by the business, and the pitch relates to their role. Website-found emails from the audit (§5) give Places leads this basis automatically. **Confirm the CASL details with a lawyer before scaling Canadian sends** (Build Plan).
 
