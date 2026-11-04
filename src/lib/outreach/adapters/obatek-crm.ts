@@ -655,11 +655,13 @@ export async function fetchSignalsForLead(crm: Crm, leadId: string, limit = 10):
   return data || []
 }
 
-// Fit posts linked to a lead since a moment, newest first
+// Fit job posts linked to a lead since a moment, newest first. Software
+// users aren't queued automatically: they're found on request.
 export async function fetchRecentFitSignals(crm: Crm, since: Date): Promise<LeadSignal[]> {
   const { data, error } = await crm
     .from('lead_signals')
     .select('*')
+    .eq('kind', 'job_post')
     .eq('fit', 'fit')
     .in('status', ['lead_created', 'matched_existing'])
     .not('lead_id', 'is', null)
@@ -761,4 +763,15 @@ export async function fetchImportedKeys(
     if (!data || data.length < PAGE_SIZE) break
   }
   return { sourceRefs, companies }
+}
+
+// Companies returned by the software search since a moment (3 credits each)
+export async function countTechSignalsSince(crm: Crm, since: Date): Promise<number> {
+  const { count, error } = await crm
+    .from('lead_signals')
+    .select('id', { count: 'exact', head: true })
+    .eq('kind', 'technology')
+    .gte('created_at', since.toISOString())
+  if (error) throw error
+  return count ?? 0
 }

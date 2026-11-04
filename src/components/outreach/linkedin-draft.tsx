@@ -13,7 +13,7 @@ import type { Lead, OutreachEmail } from '@/types/database'
 // LinkedIn stays manual: copy the note, open the profile, send it there.
 export function SignalDraftExtras({ email, lead }: { email: OutreachEmail; lead: Lead }) {
   const { data: signals } = useLeadSignals(lead.id)
-  const signal = (signals ?? []).find((s) => s.fit === 'fit')
+  const signal = (signals ?? []).find((s) => s.kind === 'job_post' && s.fit === 'fit')
   if (!signal && !email.linkedin_draft) return null
 
   const person = signal ? parseHiringTeam(signal.hiring_team).find((p) => p.linkedin_url) : undefined

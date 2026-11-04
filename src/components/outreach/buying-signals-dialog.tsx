@@ -34,7 +34,7 @@ function SignalRow({ signal }: { signal: LeadSignal }) {
         <div className="min-w-0">
           <p className="truncate font-medium">{signal.company_name || signal.company_domain || 'Unknown company'}</p>
           <p className="text-muted-foreground">
-            Hiring: {signal.job_title}
+            {signal.kind === 'technology' ? `Uses ${signal.matched_term}` : `Hiring: ${signal.job_title}`}
             {signal.location && ` · ${signal.location}`}
             {signal.employee_count != null && ` · ${signal.employee_count} staff`}
           </p>
@@ -77,7 +77,7 @@ export function BuyingSignalsDialog() {
   const dailyJobs = settings?.signal_regions.reduce((sum, r) => sum + Math.max(0, r.daily_jobs), 0) ?? 0
   const todayStart = settings ? startOfLocalDay(new Date(), settings.send_timezone).getTime() : 0
   const usedToday = rows.filter(
-    (s) => s.source === 'theirstack' && new Date(s.created_at).getTime() >= todayStart
+    (s) => s.kind === 'job_post' && s.source === 'theirstack' && new Date(s.created_at).getTime() >= todayStart
   ).length
 
   const handlePull = async () => {

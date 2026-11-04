@@ -15,6 +15,7 @@ import type {
   Stage,
 } from '@/types/database'
 import type { LicenseImportResult, LicenseState } from '@/lib/outreach/license-lists'
+import type { SoftwareSearchResult } from '@/lib/outreach/tech-leads'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
 import type { AuditLeadResult } from '@/lib/outreach/audit-findings'
 
@@ -239,6 +240,29 @@ export function useImportLicenses() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
       queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+// Find leads → Software users: companies using GoHighLevel or property
+// management software (3 TheirStack credits each)
+export function useSoftwareSearch() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { slugs: string[]; states: string[]; limit: number }): Promise<SoftwareSearchResult> => {
+      const response = await fetch('/api/outreach/software/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Failed to search for software users')
+      return body as SoftwareSearchResult
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['signals'] })
     },
   })
 }

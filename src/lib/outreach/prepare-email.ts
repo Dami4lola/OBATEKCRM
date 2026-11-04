@@ -85,7 +85,8 @@ export async function prepareEmail(
     audit = fresh.audit
   }
   // A recent job post beats anything the site check found (§3)
-  const signal = (await fetchSignalsForLead(crm, lead.id, 10)).find(
+  const signals = await fetchSignalsForLead(crm, lead.id, 10)
+  const signal = signals.find(
     (s): s is LeadSignal & { job_title: string } =>
       s.kind === 'job_post' &&
       s.fit === 'fit' &&
@@ -93,6 +94,14 @@ export async function prepareEmail(
       Date.now() - new Date(s.created_at).getTime() <= SIGNAL_MAX_AGE_DAYS * 86_400_000
   )
   const hook = signal ? 'job_post' : audit ? primaryHook(audit, lead.vertical) : 'generic'
+  // Software seen in their job posts ("AppFolio, Buildium")
+  const software = [
+    ...new Set(
+      signals
+        .filter((s) => s.kind === 'technology' && s.fit === 'fit' && s.matched_term)
+        .flatMap((s) => (s.matched_term as string).split(', '))
+    ),
+  ]
 
   const [examples, rules] = await Promise.all([
     fetchCopyExamples(crm, lead.vertical, settings.example_max_in_prompt),
@@ -107,6 +116,7 @@ export async function prepareEmail(
     examples,
     rules,
     signal: signal && { job_title: signal.job_title, posted_at: signal.posted_at, excerpt: signal.excerpt },
+    software,
     revision: feedback && {
       subject: feedback.subject ?? parseSteps(email.steps)[0]?.subject ?? '',
       opener: feedback.opener ?? email.opener ?? '',

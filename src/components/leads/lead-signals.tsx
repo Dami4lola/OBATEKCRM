@@ -18,11 +18,20 @@ export function LeadSignals({ lead }: { lead: Lead }) {
         const team = parseHiringTeam(signal.hiring_team)
         return (
           <div key={signal.id} className="space-y-1 rounded-md border p-3 text-sm">
-            <p>
-              Hiring: <span className="font-medium">{signal.job_title}</span>
-              {signal.posted_at && <span className="text-muted-foreground"> · posted {signal.posted_at}</span>}
-            </p>
-            {signal.fit_reason && <p className="text-xs text-muted-foreground">{signal.fit_reason}</p>}
+            {signal.kind === 'technology' ? (
+              <p>
+                Uses <span className="font-medium">{signal.matched_term}</span>
+                <span className="text-muted-foreground"> · seen in their job posts</span>
+              </p>
+            ) : (
+              <p>
+                Hiring: <span className="font-medium">{signal.job_title}</span>
+                {signal.posted_at && <span className="text-muted-foreground"> · posted {signal.posted_at}</span>}
+              </p>
+            )}
+            {signal.kind === 'job_post' && signal.fit_reason && (
+              <p className="text-xs text-muted-foreground">{signal.fit_reason}</p>
+            )}
             {team.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 Hiring team:{' '}

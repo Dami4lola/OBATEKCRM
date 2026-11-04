@@ -27,6 +27,7 @@ import { useOutreachSettings, useSourceLeads } from '@/lib/queries/outreach'
 import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
 import { BATCH_TARGETS, UsBatchSearch } from './us-batch-search'
 import { StateLists } from './state-lists'
+import { SoftwareUsers } from './software-users'
 
 const RESULT_OPTIONS = [20, 40, 60]
 
@@ -35,6 +36,7 @@ const MODE_LABELS = {
   agency: 'Agencies (US)',
   property: 'Property (US)',
   licenses: 'State lists (US)',
+  software: 'Software users (US)',
 } as const
 
 function verticalLabel(vertical: string) {
@@ -51,7 +53,7 @@ export function FindLeadsDialog() {
   const [maxResults, setMaxResults] = useState(20)
   const [result, setResult] = useState<SourceLeadsResult | null>(null)
   // One search, a batch across the US target states, or a state licence list
-  const [mode, setMode] = useState<'single' | 'agency' | 'property' | 'licenses'>('single')
+  const [mode, setMode] = useState<keyof typeof MODE_LABELS>('single')
 
   const sourceLeads = useSourceLeads()
   const { data: settings } = useOutreachSettings()
@@ -99,20 +101,22 @@ export function FindLeadsDialog() {
             <DialogDescription>
               {mode === 'licenses'
                 ? 'Imports licensed brokerages from official state data and adds new ones to New.'
-                : 'Searches Google for local businesses and adds new ones to New.'}{' '}
+                : mode === 'software'
+                  ? 'Finds small companies by the software their job posts mention and adds new ones to New.'
+                  : 'Searches Google for local businesses and adds new ones to New.'}{' '}
               Businesses already in the CRM are skipped.
             </DialogDescription>
           )}
         </DialogHeader>
 
         {!result && (
-          <div className="flex gap-1 rounded-md bg-muted p-1 text-sm">
-            {(['single', 'agency', 'property', 'licenses'] as const).map((m) => (
+          <div className="flex flex-wrap gap-1 rounded-md bg-muted p-1 text-sm">
+            {(Object.keys(MODE_LABELS) as (keyof typeof MODE_LABELS)[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setMode(m)}
-                className={`flex-1 rounded px-2 py-1 ${mode === m ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground'}`}
+                className={`flex-1 whitespace-nowrap rounded px-2 py-1 ${mode === m ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground'}`}
               >
                 {MODE_LABELS[m]}
               </button>
@@ -122,6 +126,8 @@ export function FindLeadsDialog() {
 
         {mode === 'licenses' && !result ? (
           <StateLists onDone={() => handleOpenChange(false)} />
+        ) : mode === 'software' && !result ? (
+          <SoftwareUsers onDone={() => handleOpenChange(false)} />
         ) : (mode === 'agency' || mode === 'property') && !result ? (
           <UsBatchSearch
             key={mode}

@@ -40,6 +40,8 @@ export interface DraftInput {
   revision?: { subject: string; opener: string; feedback: string }
   // The job post that makes this lead worth writing to now (§3)
   signal?: BuyingSignalBrief | null
+  // Software their job posts show they use ("AppFolio")
+  software?: string[]
 }
 
 export interface BuyingSignalBrief {
@@ -106,7 +108,7 @@ function quoted(text: string, max = 300): string {
   return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-export function leadBrief({ lead, audit, hook, offer, examples, revision, signal }: DraftInput): string {
+export function leadBrief({ lead, audit, hook, offer, examples, revision, signal, software }: DraftInput): string {
   const findings = audit
     ? auditFindings(audit, lead.vertical).filter((f) => !f.startsWith('Owner (from site') && !f.startsWith(BIG_CLIENT_NOTE))
     : []
@@ -127,6 +129,7 @@ export function leadBrief({ lead, audit, hook, offer, examples, revision, signal
     lead.google_rating != null
       ? `Google rating: ${lead.google_rating} from ${lead.google_review_count ?? 0} reviews`
       : null,
+    software?.length ? `Uses: ${software.map((s) => quoted(s, 40)).join(', ')}` : null,
     '</lead>',
     '',
     `<primary_angle>${HOOK_LABELS[hook]}</primary_angle>`,

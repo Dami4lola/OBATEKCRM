@@ -98,6 +98,17 @@ A **Find leads** dialog has inputs for vertical, city and max results. It pulls 
   - Leads get `vertical='property'`, `lead_source='state_license'` and `source_ref` (`TX-TREC:<licence>`, unique), so a licence is never imported twice. Companies already in the CRM in the same state (e.g. from Google Maps) are skipped by name. `license_daily_lead_cap` (200) a day; counties per state in `license_counties`.
   - Next step is **Check sites**: the Google listing lookup finds the website (Texas has no city, so it searches "name, TX"; names are unique within a state), then the email.
   - **Florida** (DBPR blocks automated downloads), **Georgia** (paid roster request), **North and South Carolina** (no bulk download; request from the Commission) come in as uploaded files once a sample of each is in (7.6c).
+- **Software users (stage 7.6b, `tech-leads.ts`):** Find leads → **Software users (US)** asks TheirStack's company search for small companies (2–20 staff, known size only) whose job posts mention GoHighLevel, AppFolio, Buildium, Rent Manager, Propertyware or kvCORE (`tech_targets`), in the target cities.
+  - **Cost:** 3 credits per company returned, capped by `tech_daily_companies` (50 a day).
+  - **City matching:** TheirStack matches city names loosely ("Charlotte" finds Charlottesville) and has no state filter, so the city is checked exactly here. Companies outside the target cities are stored as skipped and every company seen is excluded from later searches, so none is paid for twice.
+  - **New leads** get website, size, LinkedIn and city, `lead_source='theirstack'`, and a `lead_signals` row (`kind='technology'`, "Uses AppFolio"). The vertical comes from the industry when it names a known one (a roofer on GoHighLevel is a roofer); otherwise from the tool.
+  - **Existing leads** are tagged instead.
+  - **Drafts:** the brief says "Uses: AppFolio", and the prompt says never to pitch replacing it.
+  - Software users aren't queued automatically like job posts; Check sites, then Run outreach as usual.
+- **Lusha via Claude (no app change):** ask Claude in chat, e.g. "property managers in Tampa, 2–20 staff, owners".
+  1. Claude checks your credits (free) and builds the filters (free).
+  2. It previews matching companies and contacts, and shows the count and credit cost before revealing any email.
+  3. After your OK it writes a CSV in the importer's Lusha format; import it as usual (`email_source='lusha'`; US leads pass the compliance gate).
 - **Buying signals (stage 8.1, `signal-pull.ts`):** fewer, better leads. Once a day after `signal_pull_hour` (7:00), the tick pulls job posts from **TheirStack** (`theirstack-client.ts`) for small companies (2–20 staff, unknown kept) hiring an appointment setter, SDR, lead-gen specialist, CRM admin or GoHighLevel person (`signal_roles`), one search per region in `signal_regions`: the US target states (30 posts a day) and the Ottawa area (10 a day, plus dispatcher and office administrator, the original trades signal). Each post costs 1 credit; about 1,200 a month fits the $49 plan.
   - Every post is stored in `lead_signals` (unique per TheirStack id, so it's never judged twice). Each search asks only for posts TheirStack found since the newest stored one (`discovered_at_gte`, 10 minutes' overlap), and companies seen in the last 30 days are left out, so a post isn't bought twice. Filtered searches take TheirStack about a minute, so the client waits up to 170 seconds, and the tick that pulls leaves site checks and drafting to the next tick.
   - Small companies often have no website on file at TheirStack: those posts are kept, matched to existing leads by name within the state, and the site check finds the website from the Google listing.
@@ -446,6 +457,7 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   us-targets.ts        ✅ # US target states and cities (agencies, property), property searches
   socrata-client.ts    ✅ # state open-data portals (SoQL, paging), server only
   license-lists.ts     ✅ # TX / NY / IL licence lists → leads, size rule, dedupe
+  tech-leads.ts        ✅ # software users (TheirStack company search) → leads + technology signals
   theirstack-client.ts ✅ # TheirStack job search + location catalog (server only)
   job-signals.ts       ✅ # role match, region and prefilter, post → signal row → lead
   signal-fit.ts        ✅ # Haiku fit check on a post (server only)
@@ -524,6 +536,8 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
 | 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
 | 3 | 7.4 | `015_agencies.sql`; agency vertical and template; Agencies (US) batch search; agency profile in the site check (services, GoHighLevel, off-target); staff range per vertical; agency hooks and copy | 300+ agencies in New; branding/social/enterprise ones score below zero; openers talk about their inquiries, not their site |
+| 3 | 7.6b ✅ | Software users (US): TheirStack company search by GoHighLevel / property management software, technology signals, "Uses: …" in drafts | Property managers on AppFolio in New; openers don't pitch replacing it |
+| 3 | 7.6c | Florida DBPR and Sunbiz file uploads (then GA, NC, SC rosters as they arrive) | Waiting on one sample file of each |
 | 3 | 7.6a ✅ | `019_lead_sources.sql`; State lists (US): Texas, New York and Illinois licence lists from open data with broker names and office size | Licensed brokerages in New with the broker as contact; Check sites finds their sites |
 | 3 | 7.5 | `018_property.sql`; `property` vertical (keywords, template, copy, call question); Property (US) batch search sharing the agency states; car dealers and property added to `target_verticals`; property roles in buying signals | 100+ property managers and brokerages in New; openers about inquiries and after-hours calls |
 | 4 | 8.1a ✅ | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |

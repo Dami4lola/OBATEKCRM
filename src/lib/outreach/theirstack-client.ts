@@ -146,3 +146,53 @@ export async function findLocationId(
   )
   return (preferred ?? (kind === 'state' ? null : exact[0]))?.id ?? null
 }
+
+// ---------- Companies by the software they use (§3, stage 7.6b) ----------
+
+export interface TechCompany {
+  name?: string | null
+  domain?: string | null
+  url?: string | null
+  linkedin_url?: string | null
+  employee_count?: number | null
+  city?: string | null
+  country_code?: string | null
+  industry?: string | null
+  is_recruiting_agency?: boolean | null
+  technology_slugs?: string[] | null
+  technologies_found?: { technology?: { slug?: string | null; name?: string | null } | null }[] | null
+}
+
+export interface TechSearch {
+  slugs: string[]
+  cityPatterns: string[]
+  staffRange: [number, number]
+  skipDomains: string[]
+  limit: number
+}
+
+export function techSearchBody(search: TechSearch): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    company_technology_slug_or: search.slugs,
+    company_country_code_or: ['US'],
+    // Known sizes only: 3 credits each is too much to spend on a giant
+    min_employee_count: search.staffRange[0],
+    max_employee_count: search.staffRange[1],
+    expand_technology_slugs: search.slugs,
+    limit: search.limit,
+    page: 0,
+  }
+  if (search.cityPatterns.length) body.company_location_pattern_or = search.cityPatterns
+  if (search.skipDomains.length) body.company_domain_not = search.skipDomains
+  return body
+}
+
+// 3 credits per company returned, so `limit` caps the cost
+export async function searchCompaniesByTech(apiKey: string, search: TechSearch): Promise<TechCompany[]> {
+  if (search.limit <= 0 || search.slugs.length === 0) return []
+  const result = (await call(apiKey, '/v1/companies/search', {
+    method: 'POST',
+    body: JSON.stringify(techSearchBody(search)),
+  })) as { data?: unknown }
+  return Array.isArray(result.data) ? (result.data as TechCompany[]).filter((c) => c && (c.domain || c.name)) : []
+}
