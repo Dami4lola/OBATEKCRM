@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Lead, LeadUpdate } from '@/types/database'
 import { findLeadIdByPlaceId, updateLead } from './adapters/obatek-crm'
+import { errorMessage } from './errors'
 import { auditSite, leadUpdatesFromAudit, type ListingInfo, type SiteAudit } from './audit'
 import { fetchPlaceReviews, listingLeadUpdates, matchListing, searchPlaces } from './sourcing'
 
@@ -24,10 +25,6 @@ interface WebsiteLookup {
   placeId: string | null
   updates: LeadUpdate
   errors: string[]
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 async function lookUpWebsite(

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { requireTeamMember } from '@/lib/api/guards'
 import {
@@ -14,9 +15,11 @@ import {
   updateSignal,
 } from '@/lib/outreach/adapters/obatek-crm'
 import { companyDomain, techCompanyToLead, techLabels, techSignalRow, techSkipReason, toolsUsed } from '@/lib/outreach/tech-leads'
-import { searchCompaniesByTech, TheirStackError } from '@/lib/outreach/theirstack-client'
+import type { TechTarget } from '@/lib/outreach/settings'
+import { searchCompaniesByTech, TheirStackError, type TechCompany } from '@/lib/outreach/theirstack-client'
 import { US_TARGET_METROS } from '@/lib/outreach/us-targets'
 import type { SoftwareSearchResult } from '@/lib/outreach/tech-leads'
+import type { Database } from '@/types/database'
 
 const BodySchema = z.object({
   slugs: z.array(z.string().min(1).max(60)).min(1).max(10),
@@ -26,6 +29,69 @@ const BodySchema = z.object({
 
 // Companies seen before are left out of the search so they aren't paid for again
 const SKIP_DOMAINS_MAX = 200
+
+type Crm = SupabaseClient<Database>
+
+// What one search shares
+interface Search {
+  crm: Crm
+  targets: TechTarget[]
+  cities: string[]
+  staffRange: [number, number]
+  stageId: string
+  existingHosts: Set<string>
+  now: Date
+  result: SoftwareSearchResult
+}
+
+// The lead for a kept company: the one with its website, or a new one.
+// Null when it was deleted with Clean up before: it stays deleted.
+async function linkOrAddLead({ crm, stageId, existingHosts, result }: Search, company: TechCompany, signalId: string, used: TechTarget[]) {
+  const host = companyDomain(company)
+  const known = !!host && existingHosts.has(host)
+  const leadId = known ? await findLeadIdByHost(crm, host) : null
+  if (leadId) {
+    await updateSignal(crm, signalId, { lead_id: leadId, status: 'matched_existing' })
+    result.matched++
+    return leadId
+  }
+  if (known) {
+    await updateSignal(crm, signalId, { status: 'discarded', fit_reason: 'Deleted before with Clean up' })
+    result.skipped++
+    return null
+  }
+  const [lead] = await pushLeads(crm, stageId, [techCompanyToLead(company, used)])
+  if (host) existingHosts.add(host)
+  await updateSignal(crm, signalId, { lead_id: lead.id, status: 'lead_created' })
+  result.added++
+  return lead.id
+}
+
+// Stores one returned company, then adds or links its lead
+async function handleCompany(search: Search, company: TechCompany) {
+  const { crm, targets, cities, staffRange, now, result } = search
+  const tools = toolsUsed(company, targets)
+  const used = tools.length ? tools : targets
+  const skip = techSkipReason(company, cities, staffRange)
+  const [signal] = await insertSignals(crm, [techSignalRow(company, used, skip, now)])
+  // Already stored: returned again despite the skip list
+  if (!signal) return
+  if (skip) {
+    result.skipped++
+    if (result.skipReasons.length < 5) result.skipReasons.push(`${company.name ?? 'A company'}: ${skip}`)
+    return
+  }
+
+  const leadId = await linkOrAddLead(search, company, signal.id, used)
+  if (!leadId) return
+  await logActivity(crm, {
+    lead_id: leadId,
+    type: 'note',
+    title: `Uses ${techLabels(used)}`,
+    description: 'Seen in their job posts (TheirStack)',
+    meta: { signal_id: signal.id, source: 'theirstack' },
+  })
+}
 
 // Find leads → Software users (§3): small companies whose job posts show
 // GoHighLevel or property management software. 3 TheirStack credits per
@@ -67,15 +133,15 @@ export async function POST(request: Request) {
     }
 
     const now = new Date()
+    const staffRange = settings.staff_range.property ?? [2, 20]
     const companies = await searchCompaniesByTech(apiKey, {
       slugs: targets.map((t) => t.slug),
       cityPatterns: cities,
-      staffRange: settings.staff_range.property ?? [2, 20],
+      staffRange,
       skipDomains: await fetchRecentSignalDomains(supabase, new Date(0), SKIP_DOMAINS_MAX),
       limit: Math.min(parsed.data.limit, remaining),
     })
 
-    const existing = await fetchExistingContacts(supabase)
     const result: SoftwareSearchResult = {
       returned: companies.length,
       added: 0,
@@ -84,45 +150,18 @@ export async function POST(request: Request) {
       skipReasons: [],
       stageName: stage.name,
     }
-
-    for (const company of companies) {
-      const tools = toolsUsed(company, targets)
-      const used = tools.length ? tools : targets
-      const skip = techSkipReason(company, cities, settings.staff_range.property ?? [2, 20])
-      const [signal] = await insertSignals(supabase, [techSignalRow(company, used, skip, now)])
-      // Already stored: returned again despite the skip list
-      if (!signal) continue
-      if (skip) {
-        result.skipped++
-        if (result.skipReasons.length < 5) result.skipReasons.push(`${company.name ?? 'A company'}: ${skip}`)
-        continue
-      }
-
-      const host = companyDomain(company)
-      let leadId = host && existing.hosts.has(host) ? await findLeadIdByHost(supabase, host) : null
-      if (leadId) {
-        await updateSignal(supabase, signal.id, { lead_id: leadId, status: 'matched_existing' })
-        result.matched++
-      } else if (host && existing.hosts.has(host)) {
-        // Deleted with Clean up before: leave it deleted
-        await updateSignal(supabase, signal.id, { status: 'discarded', fit_reason: 'Deleted before with Clean up' })
-        result.skipped++
-        continue
-      } else {
-        const [lead] = await pushLeads(supabase, stage.id, [techCompanyToLead(company, used)])
-        leadId = lead.id
-        if (host) existing.hosts.add(host)
-        await updateSignal(supabase, signal.id, { lead_id: leadId, status: 'lead_created' })
-        result.added++
-      }
-      await logActivity(supabase, {
-        lead_id: leadId,
-        type: 'note',
-        title: `Uses ${techLabels(used)}`,
-        description: 'Seen in their job posts (TheirStack)',
-        meta: { signal_id: signal.id, source: 'theirstack' },
-      })
+    const search: Search = {
+      crm: supabase,
+      targets,
+      cities,
+      staffRange,
+      stageId: stage.id,
+      existingHosts: (await fetchExistingContacts(supabase)).hosts,
+      now,
+      result,
     }
+
+    for (const company of companies) await handleCompany(search, company)
     return NextResponse.json(result)
   } catch (error) {
     console.error('Software search error:', error)

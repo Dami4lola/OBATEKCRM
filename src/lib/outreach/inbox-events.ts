@@ -159,7 +159,9 @@ export function indexSentEmails(emails: SentEmail[]): InboxIndex {
 }
 
 // Same thread first, then the lead's own address, then a colleague at the
-// same company domain (never a free-mail domain)
+// same company domain (never a free-mail domain). The sync re-reads a few
+// minutes of mail, so what they wrote before the send can come up after it:
+// that isn't a reply to it.
 export function matchMessage(
   message: ReceivedMessage,
   incoming: Incoming,
@@ -169,20 +171,22 @@ export function matchMessage(
     const email = index.byConversation.get(message.conversationId)
     if (email) return { email, by: 'thread' }
   }
+  const afterSend = (email: SentEmail | undefined): email is SentEmail =>
+    !!email && (!email.sent_at || new Date(message.receivedAt) >= new Date(email.sent_at))
   if (incoming.kind === 'bounce') {
     for (const address of incoming.bounce.addresses) {
       const email = index.byAddress.get(address)
-      if (email) return { email, by: 'address' }
+      if (afterSend(email)) return { email, by: 'address' }
     }
     return null
   }
   const from = message.from?.toLowerCase()
   if (!from) return null
   const byAddress = index.byAddress.get(from)
-  if (byAddress) return { email: byAddress, by: 'address' }
+  if (afterSend(byAddress)) return { email: byAddress, by: 'address' }
   const domain = emailDomain(from)
   const byDomain = domain ? index.byDomain.get(domain) : undefined
-  return byDomain ? { email: byDomain, by: 'domain' } : null
+  return afterSend(byDomain) ? { email: byDomain, by: 'domain' } : null
 }
 
 // ---------- what changes ----------

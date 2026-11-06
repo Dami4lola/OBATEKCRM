@@ -299,13 +299,10 @@ function describeFetchError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export async function auditSite(input: AuditInput): Promise<SiteAudit> {
-  const now = input.now ?? new Date()
-  const fetchPage = input.fetchPage ?? safeFetch
-  const fetchPerf = input.fetchPerf ?? fetchPerfScore
-  const host = websiteHost(input.website)
+type FetchPage = NonNullable<AuditInput['fetchPage']>
 
-  const audit: SiteAudit = {
+function emptyAudit(input: AuditInput, now: Date): SiteAudit {
+  return {
     audited_at: now.toISOString(),
     input_url: input.website,
     final_url: null,
@@ -329,6 +326,115 @@ export async function auditSite(input: AuditInput): Promise<SiteAudit> {
     slow_callback_reviews: input.reviews ? findSlowCallbackReviews(input.reviews) : null,
     errors: [],
   }
+}
+
+// The homepage, or null when it can't be read (the audit says why)
+async function loadHomepage(audit: SiteAudit, homeUrl: string, fetchPage: FetchPage): Promise<SafeResponse | null> {
+  let home: SafeResponse
+  try {
+    home = await fetchPage(homeUrl)
+  } catch (error) {
+    // Blocked or malformed URLs say nothing about the business
+    if (error instanceof SafeFetchError && (error.code === 'blocked' || error.code === 'bad_url')) {
+      audit.errors.push(describeFetchError(error))
+      return null
+    }
+    audit.dead_site = true
+    audit.errors.push(describeFetchError(error))
+    return null
+  }
+
+  audit.final_url = home.url
+  audit.https = home.url.startsWith('https://')
+  audit.pages_checked.push(home.url)
+  if (home.status >= 500 || home.status === 404 || home.status === 410) {
+    audit.dead_site = true
+    audit.errors.push(`Homepage returned ${home.status}`)
+    return null
+  }
+  if (home.status >= 400) {
+    // Often a bot blocker: the site exists, we just can't read it
+    audit.errors.push(`Homepage returned ${home.status}; findings are incomplete`)
+    return null
+  }
+  return home
+}
+
+async function fetchDisallows(homeUrl: string, fetchPage: FetchPage): Promise<string[]> {
+  try {
+    const robots = await fetchPage(new URL('/robots.txt', homeUrl).href)
+    if (robots.status === 200 && !/html/i.test(robots.contentType)) return robotsDisallows(robots.body)
+  } catch {
+    // No robots.txt: everything is allowed
+  }
+  return []
+}
+
+// The contact and about pages, if robots.txt allows them
+function extraPageUrls(links: PageLink[], homeUrl: string, disallows: string[]): string[] {
+  const pick = (pattern: RegExp) =>
+    links.find((link) => pattern.test(new URL(link.url).pathname) || pattern.test(link.text))?.url
+  return [
+    pick(/contact|quote|estimate|book/i),
+    pick(/about|our-story|who-we-are|team|meet/i),
+  ]
+    .filter((url): url is string => !!url && url !== homeUrl && isAllowed(url, disallows))
+    .filter((url, i, all) => all.indexOf(url) === i)
+    .slice(0, MAX_EXTRA_PAGES)
+}
+
+async function readExtraPages(audit: SiteAudit, urls: string[], fetchPage: FetchPage) {
+  const bodies: string[] = []
+  const links: PageLink[] = []
+  for (const url of urls) {
+    try {
+      const page = await fetchPage(url)
+      if (page.status < 400) {
+        bodies.push(page.body)
+        links.push(...extractLinks(page.body, page.url))
+        audit.pages_checked.push(page.url)
+      }
+    } catch (error) {
+      audit.errors.push(`${url}: ${describeFetchError(error)}`)
+    }
+  }
+  return { bodies, links }
+}
+
+// What the pages say about the business
+function readFindings(
+  audit: SiteAudit,
+  home: SafeResponse,
+  pages: string[],
+  links: PageLink[],
+  city: string | null,
+  now: Date
+) {
+  const allHtml = pages.join('\n')
+  const allText = pages.map(htmlToText).join('\n')
+  const homeText = htmlToText(home.body)
+
+  audit.mobile_viewport = /<meta[^>]+name\s*=\s*["']?viewport/i.test(home.body)
+  audit.copyright_year = copyrightYear(homeText, now)
+  const booking = detectBooking(allHtml, links)
+  audit.booking_tool = booking.tool
+  audit.has_booking = !!booking.tool || booking.quoteCta
+  audit.request_paths = booking.requests
+  audit.has_contact_form = hasContactForm(allHtml)
+  audit.emails_found = extractEmails(allHtml, websiteHost(home.url))
+  audit.owner_name = findOwnerName(allText)
+  audit.size_signals = extractSizeSignals(allText)
+  audit.agency = detectAgencyProfile(allHtml, allText)
+  audit.seo_issues = seoIssues(home.body, city)
+  audit.phone_on_homepage = /href\s*=\s*["']?tel:/i.test(home.body) || PHONE_PATTERN.test(homeText)
+}
+
+export async function auditSite(input: AuditInput): Promise<SiteAudit> {
+  const now = input.now ?? new Date()
+  const fetchPage = input.fetchPage ?? safeFetch
+  const fetchPerf = input.fetchPerf ?? fetchPerfScore
+  const host = websiteHost(input.website)
+  const audit = emptyAudit(input, now)
 
   if (!host) {
     audit.website_status = input.noWebsiteConfirmed ? 'none_confirmed' : 'unknown'
@@ -352,91 +458,20 @@ export async function auditSite(input: AuditInput): Promise<SiteAudit> {
     return audit
   }
 
-  let home: SafeResponse
-  try {
-    home = await fetchPage(homeUrl)
-  } catch (error) {
-    // Blocked or malformed URLs say nothing about the business
-    if (error instanceof SafeFetchError && (error.code === 'blocked' || error.code === 'bad_url')) {
-      audit.errors.push(describeFetchError(error))
-      return audit
-    }
-    audit.dead_site = true
-    audit.errors.push(describeFetchError(error))
-    return audit
-  }
-
-  audit.final_url = home.url
-  audit.https = home.url.startsWith('https://')
-  audit.pages_checked.push(home.url)
-  if (home.status >= 500 || home.status === 404 || home.status === 410) {
-    audit.dead_site = true
-    audit.errors.push(`Homepage returned ${home.status}`)
-    return audit
-  }
-  if (home.status >= 400) {
-    // Often a bot blocker: the site exists, we just can't read it
-    audit.errors.push(`Homepage returned ${home.status}; findings are incomplete`)
-    return audit
-  }
+  const home = await loadHomepage(audit, homeUrl, fetchPage)
+  if (!home) return audit
 
   const perf = fetchPerf(home.url, input.pagespeedKey).catch((error) => {
     audit.errors.push(`PageSpeed: ${describeFetchError(error)}`)
     return null
   })
 
-  let disallows: string[] = []
-  try {
-    const robots = await fetchPage(new URL('/robots.txt', home.url).href)
-    if (robots.status === 200 && !/html/i.test(robots.contentType)) disallows = robotsDisallows(robots.body)
-  } catch {
-    // No robots.txt: everything is allowed
-  }
-
+  const disallows = await fetchDisallows(home.url, fetchPage)
   const finalHost = websiteHost(home.url)
   const links = extractLinks(home.body, home.url).filter((link) => websiteHost(link.url) === finalHost)
-  const pick = (pattern: RegExp) =>
-    links.find((link) => pattern.test(new URL(link.url).pathname) || pattern.test(link.text))?.url
-  const extraUrls = [
-    pick(/contact|quote|estimate|book/i),
-    pick(/about|our-story|who-we-are|team|meet/i),
-  ]
-    .filter((url): url is string => !!url && url !== home.url && isAllowed(url, disallows))
-    .filter((url, i, all) => all.indexOf(url) === i)
-    .slice(0, MAX_EXTRA_PAGES)
+  const extra = await readExtraPages(audit, extraPageUrls(links, home.url, disallows), fetchPage)
 
-  const pages = [home.body]
-  const pageLinks = [...links]
-  for (const url of extraUrls) {
-    try {
-      const page = await fetchPage(url)
-      if (page.status < 400) {
-        pages.push(page.body)
-        pageLinks.push(...extractLinks(page.body, page.url))
-        audit.pages_checked.push(page.url)
-      }
-    } catch (error) {
-      audit.errors.push(`${url}: ${describeFetchError(error)}`)
-    }
-  }
-
-  const allHtml = pages.join('\n')
-  const allText = pages.map(htmlToText).join('\n')
-  const homeText = htmlToText(home.body)
-
-  audit.mobile_viewport = /<meta[^>]+name\s*=\s*["']?viewport/i.test(home.body)
-  audit.copyright_year = copyrightYear(homeText, now)
-  const booking = detectBooking(allHtml, pageLinks)
-  audit.booking_tool = booking.tool
-  audit.has_booking = !!booking.tool || booking.quoteCta
-  audit.request_paths = booking.requests
-  audit.has_contact_form = hasContactForm(allHtml)
-  audit.emails_found = extractEmails(allHtml, finalHost)
-  audit.owner_name = findOwnerName(allText)
-  audit.size_signals = extractSizeSignals(allText)
-  audit.agency = detectAgencyProfile(allHtml, allText)
-  audit.seo_issues = seoIssues(home.body, input.city)
-  audit.phone_on_homepage = /href\s*=\s*["']?tel:/i.test(home.body) || PHONE_PATTERN.test(homeText)
+  readFindings(audit, home, [home.body, ...extra.bodies], [...links, ...extra.links], input.city, now)
   audit.perf_score = await perf
 
   return audit

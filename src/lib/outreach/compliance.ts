@@ -33,6 +33,9 @@ export function emailDomain(email: string): string | null {
   return at === -1 ? null : email.slice(at + 1).trim().toLowerCase() || null
 }
 
+// Your own inboxes, for testing: CASL is about emailing other people
+export const OWN_DOMAINS = new Set(['obatek.net'])
+
 export function checkLead(lead: Lead, ctx: ComplianceContext): GatherWarning[] {
   const warnings: GatherWarning[] = []
   const email = lead.email?.trim().toLowerCase()
@@ -48,7 +51,7 @@ export function checkLead(lead: Lead, ctx: ComplianceContext): GatherWarning[] {
 
   // CASL: Canadian addresses may only be emailed when the business published
   // the address itself. Without a country we can't tell, so block until set.
-  if (email && lead.email_source !== 'website') {
+  if (email && lead.email_source !== 'website' && !OWN_DOMAINS.has(emailDomain(email) ?? '')) {
     if (lead.country === 'CA') {
       warnings.push({
         code: 'casl',

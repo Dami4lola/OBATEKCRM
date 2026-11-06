@@ -17,40 +17,62 @@ if (!secret) {
 const appUrl = (process.env.OUTREACH_APP_URL || 'http://localhost:3000').replace(/\/$/, '')
 const tickUrl = `${appUrl}/api/outreach/cron/tick`
 
-function describe(summary) {
+function describeRuns(summary) {
+  return (summary.started ?? []).map((run) =>
+    run.error ? `run ${run.runId} failed: ${run.error}` : `started run: ${run.drafts} to draft, ${run.blocked} blocked`
+  )
+}
+
+function describeDrafting({ drafting }) {
+  if (typeof drafting !== 'object') return drafting ? [drafting] : []
   const parts = []
-  for (const run of summary.started ?? []) {
-    parts.push(run.error ? `run ${run.runId} failed: ${run.error}` : `started run: ${run.drafts} to draft, ${run.blocked} blocked`)
-  }
-  if (typeof summary.drafting === 'object') {
-    if (summary.drafting.drafted) parts.push(`${summary.drafting.drafted} drafted`)
-    if (summary.drafting.stopped) parts.push(`drafting stopped: ${summary.drafting.stopped}`)
-  } else if (summary.drafting) parts.push(summary.drafting)
-  if (typeof summary.inbox === 'object') {
-    const s = summary.inbox
-    if (s.newReplies?.length) parts.push(`${s.newReplies.length} new repl${s.newReplies.length === 1 ? 'y' : 'ies'}`)
-    if (s.suppressed) parts.push(`${s.suppressed} added to do-not-contact`)
-    if (s.paused) parts.push(s.paused)
-    for (const e of s.errors ?? []) parts.push(`inbox: ${e}`)
-  }
-  if (typeof summary.sending === 'object') {
-    const s = summary.sending
-    const sent = [
-      s.sent && `${s.sent} first email${s.sent === 1 ? '' : 's'}`,
-      s.followUps && `${s.followUps} follow-up${s.followUps === 1 ? '' : 's'}`,
-      s.seeds && `${s.seeds} seed cop${s.seeds === 1 ? 'y' : 'ies'}`,
-    ].filter(Boolean)
-    if (sent.length) parts.push(`sent ${sent.join(', ')}`)
-    if (s.blocked) parts.push(`${s.blocked} blocked`)
-    if (s.failed) parts.push(`${s.failed} failed`)
-    if (s.stopped) parts.push(`${s.stopped} sequence${s.stopped === 1 ? '' : 's'} stopped`)
-    if (s.paused) parts.push(s.paused)
-    if (s.skipped && s.skipped !== 'Nothing due') parts.push(`not sending: ${s.skipped}`)
-    for (const e of s.errors ?? []) parts.push(`sending: ${e}`)
-  }
-  for (const key of ['startError', 'draftError', 'mailboxError', 'inboxError', 'sendError']) {
-    if (summary[key]) parts.push(`${key}: ${summary[key]}`)
-  }
+  if (drafting.drafted) parts.push(`${drafting.drafted} drafted`)
+  if (drafting.stopped) parts.push(`drafting stopped: ${drafting.stopped}`)
+  return parts
+}
+
+function describeInbox({ inbox }) {
+  if (typeof inbox !== 'object') return []
+  const parts = []
+  if (inbox.newReplies?.length) parts.push(`${inbox.newReplies.length} new repl${inbox.newReplies.length === 1 ? 'y' : 'ies'}`)
+  if (inbox.suppressed) parts.push(`${inbox.suppressed} added to do-not-contact`)
+  if (inbox.paused) parts.push(inbox.paused)
+  for (const e of inbox.errors ?? []) parts.push(`inbox: ${e}`)
+  return parts
+}
+
+function describeSending({ sending: s }) {
+  if (typeof s !== 'object') return []
+  const parts = []
+  const sent = [
+    s.sent && `${s.sent} first email${s.sent === 1 ? '' : 's'}`,
+    s.followUps && `${s.followUps} follow-up${s.followUps === 1 ? '' : 's'}`,
+    s.seeds && `${s.seeds} seed cop${s.seeds === 1 ? 'y' : 'ies'}`,
+  ].filter(Boolean)
+  if (sent.length) parts.push(`sent ${sent.join(', ')}`)
+  if (s.blocked) parts.push(`${s.blocked} blocked`)
+  if (s.failed) parts.push(`${s.failed} failed`)
+  if (s.stopped) parts.push(`${s.stopped} sequence${s.stopped === 1 ? '' : 's'} stopped`)
+  if (s.paused) parts.push(s.paused)
+  if (s.skipped && s.skipped !== 'Nothing due') parts.push(`not sending: ${s.skipped}`)
+  for (const e of s.errors ?? []) parts.push(`sending: ${e}`)
+  return parts
+}
+
+function describeErrors(summary) {
+  return ['startError', 'signalError', 'signalRunError', 'draftError', 'mailboxError', 'inboxError', 'sendError']
+    .filter((key) => summary[key])
+    .map((key) => `${key}: ${summary[key]}`)
+}
+
+function describe(summary) {
+  const parts = [
+    ...describeRuns(summary),
+    ...describeDrafting(summary),
+    ...describeInbox(summary),
+    ...describeSending(summary),
+    ...describeErrors(summary),
+  ]
   return parts.length ? parts.join(' · ') : 'nothing to do'
 }
 

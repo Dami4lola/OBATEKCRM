@@ -14,6 +14,7 @@ import {
 } from './adapters/obatek-crm'
 import { gatherLeads, runEmailRows, scheduledRunChoice } from './gather'
 import { prepareEmail, PrepareError } from './prepare-email'
+import { errorMessage } from './errors'
 import { runLeadAudit } from './run-audit'
 import { parseSignals } from './scoring'
 import { localParts } from './sequence'
@@ -32,10 +33,6 @@ export interface StartedRun {
   drafts: number
   blocked: number
   error?: string
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function excludedLeadIds(summary: Json): string[] {

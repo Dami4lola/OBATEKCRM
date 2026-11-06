@@ -54,6 +54,252 @@ function templateLabel(key: string) {
   return key === 'default' ? 'Default (trades)' : key.replace(/_/g, ' ')
 }
 
+const STATUS_BADGES: Partial<
+  Record<OutreachEmail['status'], { label: string; className?: string; variant?: 'outline' | 'destructive' }>
+> = {
+  approved: { label: 'Approved', className: 'bg-green-600' },
+  skipped: { label: 'Skipped', variant: 'outline' },
+  queued: { label: 'Queued', className: 'bg-sky-600' },
+  sent: { label: 'Sent', className: 'bg-blue-600' },
+  failed: { label: 'Failed', variant: 'destructive' },
+  blocked: { label: 'Blocked', variant: 'destructive' },
+}
+
+function StatusBadge({ status }: { status: OutreachEmail['status'] }) {
+  const badge = STATUS_BADGES[status]
+  if (!badge) return null
+  return (
+    <Badge variant={badge.variant} className={badge.className}>
+      {badge.label}
+    </Badge>
+  )
+}
+
+interface ReviewedEmailProps {
+  email: OutreachEmail
+  step: OutreachEmailStep | undefined
+  pending: boolean
+  onReopen: () => void
+}
+
+// An email past the draft stage: what was saved, and what became of it
+function ReviewedEmail({ email, step, pending, onReopen }: ReviewedEmailProps) {
+  // Sent and blocked are final; the rest can go back to a draft
+  const canUndo = ['approved', 'queued', 'skipped', 'failed'].includes(email.status)
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{step?.subject}</p>
+      <p className="whitespace-pre-line text-sm text-muted-foreground">{step?.body}</p>
+      {email.status === 'sent' && (
+        <p className={`text-xs ${email.reply_class === 'interested' ? 'font-medium text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
+          {sentStats(email)}
+        </p>
+      )}
+      {email.status === 'failed' && email.last_error && (
+        <p className="text-xs text-destructive">{email.last_error}</p>
+      )}
+      {email.status === 'blocked' && email.blocked_reason && (
+        <p className="text-xs text-destructive">{email.blocked_reason}</p>
+      )}
+      {canUndo && (
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onReopen} disabled={pending}>
+          <Undo2 className="mr-1 h-3 w-3" />
+          {email.status === 'failed' ? 'Back to draft' : 'Undo'}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+interface TemplatePickerProps {
+  keys: string[]
+  value: string
+  disabled: boolean
+  onChange: (key: string) => void
+}
+
+function TemplatePicker({ keys, value, disabled, onChange }: TemplatePickerProps) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      Template
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger className="h-7 w-auto gap-1 text-xs capitalize">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {keys.map((key) => (
+            <SelectItem key={key} value={key} className="text-xs capitalize">
+              {templateLabel(key)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+interface EmailToolsProps {
+  words: number
+  editing: boolean
+  showFollowUps: boolean
+  onEdit: () => void
+  onBackToTemplate: () => void
+  onToggleFollowUps: () => void
+}
+
+// The word count, and the switches under the email
+function EmailTools({ words, editing, showFollowUps, onEdit, onBackToTemplate, onToggleFollowUps }: EmailToolsProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+      <span className={words > EMAIL_1_MAX_WORDS ? 'text-amber-600' : ''}>
+        {words} words{words > EMAIL_1_MAX_WORDS && ` (aim for under ${EMAIL_1_MAX_WORDS})`}
+      </span>
+      {!editing && (
+        <button type="button" className="underline" onClick={onEdit}>
+          Edit full emails
+        </button>
+      )}
+      {editing && (
+        <button type="button" className="underline" onClick={onBackToTemplate}>
+          Back to template
+        </button>
+      )}
+      <button type="button" className="flex items-center gap-1 underline" onClick={onToggleFollowUps}>
+        {showFollowUps ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        Emails 2–3
+      </button>
+    </div>
+  )
+}
+
+interface FollowUpStepsProps {
+  steps: OutreachEmailStep[]
+  editing: boolean
+  onEdit: (index: number, body: string) => void
+}
+
+function FollowUpSteps({ steps, editing, onEdit }: FollowUpStepsProps) {
+  return (
+    <>
+      {steps.slice(1).map((step, i) =>
+        editing ? (
+          <Textarea
+            key={step.step}
+            value={step.body}
+            onChange={(e) => onEdit(i + 1, e.target.value)}
+            rows={6}
+            className="text-sm"
+          />
+        ) : (
+          <div key={step.step} className="rounded bg-muted/50 p-2 text-sm">
+            <p className="mb-1 text-xs text-muted-foreground">
+              Email {step.step} · {step.subject}
+            </p>
+            <p className="whitespace-pre-line">{step.body}</p>
+          </div>
+        )
+      )}
+    </>
+  )
+}
+
+interface DraftActionsProps {
+  drafted: boolean
+  drafting: boolean
+  pending: boolean
+  canApprove: boolean
+  onDraft: () => void
+  onToggleFeedback: () => void
+  onApprove: () => void
+  onSkip: () => void
+}
+
+function DraftActions({ drafted, drafting, pending, canApprove, onDraft, onToggleFeedback, onApprove, onSkip }: DraftActionsProps) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" onClick={onDraft} disabled={drafting || pending}>
+        {drafting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
+        {drafted ? 'Redraft with Claude' : 'Draft with Claude'}
+      </Button>
+      {drafted && (
+        <Button size="sm" variant="outline" onClick={onToggleFeedback} disabled={drafting}>
+          <MessageSquare className="mr-1 h-3 w-3" />
+          Feedback
+        </Button>
+      )}
+      <Button size="sm" onClick={onApprove} disabled={!canApprove || drafting || pending}>
+        <Check className="mr-1 h-3 w-3" />
+        Approve
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onSkip} disabled={drafting || pending}>
+        <X className="mr-1 h-3 w-3" />
+        Skip
+      </Button>
+    </div>
+  )
+}
+
+interface FeedbackFormProps {
+  note: string
+  remember: boolean
+  onlyVertical: boolean
+  vertical: string | null
+  drafting: boolean
+  onNote: (note: string) => void
+  onRemember: (on: boolean) => void
+  onOnlyVertical: (on: boolean) => void
+  onSubmit: () => void
+  onCancel: () => void
+}
+
+function FeedbackForm({
+  note,
+  remember,
+  onlyVertical,
+  vertical,
+  drafting,
+  onNote,
+  onRemember,
+  onOnlyVertical,
+  onSubmit,
+  onCancel,
+}: FeedbackFormProps) {
+  return (
+    <div className="space-y-2 rounded-md border border-dashed p-2">
+      <Textarea
+        value={note}
+        onChange={(e) => onNote(e.target.value)}
+        rows={2}
+        maxLength={500}
+        placeholder="What should Claude change? e.g. They do have a test-drive form; open with the time lost replying to each request by email"
+        className="text-sm"
+      />
+      <div className="flex flex-wrap items-center gap-4 text-xs">
+        <label className="flex items-center gap-2">
+          <Checkbox checked={remember} onCheckedChange={(v) => onRemember(v === true)} />
+          Remember for future drafts
+        </label>
+        {remember && vertical && (
+          <label className="flex items-center gap-2">
+            <Checkbox checked={onlyVertical} onCheckedChange={(v) => onOnlyVertical(v === true)} />
+            Only for {vertical.replace(/_/g, ' ')} leads
+          </label>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onSubmit} disabled={note.trim().length < 3 || drafting}>
+          {drafting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
+          Redraft with feedback
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={drafting}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 interface EmailCardProps {
   item: RunEmail
   settings: OutreachSettings
@@ -88,7 +334,6 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   const audit = parseAudit(email.audit) ?? parseAudit(lead.audit)
   const hook = email.primary_hook ?? (audit ? primaryHook(audit, lead.vertical) : null)
   const findings = audit ? auditFindings(audit, lead.vertical).slice(0, 4) : []
-  const words = wordCount(steps[0]?.body ?? '')
   const canApprove = !!steps[0]?.subject.trim() && (customSteps !== null || opener.trim().length > 0)
 
   const editStep = (index: number, body: string) => {
@@ -130,8 +375,6 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   }
 
   const reviewed = email.status !== 'draft'
-  // Sent and blocked are final; the rest can go back to a draft
-  const canUndo = ['approved', 'queued', 'skipped', 'failed'].includes(email.status)
 
   return (
     <div className={`space-y-3 rounded-md border p-3 ${reviewed ? 'bg-muted/30' : ''}`}>
@@ -143,12 +386,7 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
           </p>
           <p className="truncate text-xs text-muted-foreground">{lead.email}</p>
         </div>
-        {email.status === 'approved' && <Badge className="bg-green-600">Approved</Badge>}
-        {email.status === 'skipped' && <Badge variant="outline">Skipped</Badge>}
-        {email.status === 'queued' && <Badge className="bg-sky-600">Queued</Badge>}
-        {email.status === 'sent' && <Badge className="bg-blue-600">Sent</Badge>}
-        {email.status === 'failed' && <Badge variant="destructive">Failed</Badge>}
-        {email.status === 'blocked' && <Badge variant="destructive">Blocked</Badge>}
+        <StatusBadge status={email.status} />
       </div>
 
       {(hook || findings.length > 0) && (
@@ -163,45 +401,16 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
       {hook === 'job_post' && <SignalDraftExtras email={email} lead={lead} />}
 
       {reviewed ? (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{saved[0]?.subject}</p>
-          <p className="whitespace-pre-line text-sm text-muted-foreground">{saved[0]?.body}</p>
-          {email.status === 'sent' && (
-            <p className={`text-xs ${email.reply_class === 'interested' ? 'font-medium text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
-              {sentStats(email)}
-            </p>
-          )}
-          {email.status === 'failed' && email.last_error && (
-            <p className="text-xs text-destructive">{email.last_error}</p>
-          )}
-          {email.status === 'blocked' && email.blocked_reason && (
-            <p className="text-xs text-destructive">{email.blocked_reason}</p>
-          )}
-          {canUndo && (
-            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleReview('reopen')} disabled={review.isPending}>
-              <Undo2 className="mr-1 h-3 w-3" />
-              {email.status === 'failed' ? 'Back to draft' : 'Undo'}
-            </Button>
-          )}
-        </div>
+        <ReviewedEmail email={email} step={saved[0]} pending={review.isPending} onReopen={() => handleReview('reopen')} />
       ) : (
         <>
           {templateKeys.length > 1 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              Template
-              <Select value={template.key} onValueChange={handleTemplate} disabled={updateLead.isPending || drafting}>
-                <SelectTrigger className="h-7 w-auto gap-1 text-xs capitalize">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {templateKeys.map((key) => (
-                    <SelectItem key={key} value={key} className="text-xs capitalize">
-                      {templateLabel(key)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <TemplatePicker
+              keys={templateKeys}
+              value={template.key}
+              disabled={updateLead.isPending || drafting}
+              onChange={handleTemplate}
+            />
           )}
           <div className="grid gap-2">
             <Input
@@ -233,103 +442,41 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
           ) : (
             <p className="whitespace-pre-line rounded bg-muted/50 p-2 text-sm">{steps[0]?.body}</p>
           )}
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span className={words > EMAIL_1_MAX_WORDS ? 'text-amber-600' : ''}>
-              {words} words{words > EMAIL_1_MAX_WORDS && ` (aim for under ${EMAIL_1_MAX_WORDS})`}
-            </span>
-            {!customSteps && (
-              <button type="button" className="underline" onClick={() => setCustomSteps(rendered)}>
-                Edit full emails
-              </button>
-            )}
-            {customSteps && (
-              <button type="button" className="underline" onClick={() => setCustomSteps(null)}>
-                Back to template
-              </button>
-            )}
-            <button
-              type="button"
-              className="flex items-center gap-1 underline"
-              onClick={() => setShowFollowUps((v) => !v)}
-            >
-              {showFollowUps ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              Emails 2–3
-            </button>
-          </div>
+          <EmailTools
+            words={wordCount(steps[0]?.body ?? '')}
+            editing={!!customSteps}
+            showFollowUps={showFollowUps}
+            onEdit={() => setCustomSteps(rendered)}
+            onBackToTemplate={() => setCustomSteps(null)}
+            onToggleFollowUps={() => setShowFollowUps((v) => !v)}
+          />
 
-          {showFollowUps &&
-            steps.slice(1).map((step, i) =>
-              customSteps ? (
-                <Textarea
-                  key={step.step}
-                  value={step.body}
-                  onChange={(e) => editStep(i + 1, e.target.value)}
-                  rows={6}
-                  className="text-sm"
-                />
-              ) : (
-                <div key={step.step} className="rounded bg-muted/50 p-2 text-sm">
-                  <p className="mb-1 text-xs text-muted-foreground">
-                    Email {step.step} · {step.subject}
-                  </p>
-                  <p className="whitespace-pre-line">{step.body}</p>
-                </div>
-              )
-            )}
+          {showFollowUps && <FollowUpSteps steps={steps} editing={!!customSteps} onEdit={editStep} />}
 
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => onDraft(email.id)} disabled={drafting || review.isPending}>
-              {drafting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
-              {email.drafted_at ? 'Redraft with Claude' : 'Draft with Claude'}
-            </Button>
-            {email.drafted_at && (
-              <Button size="sm" variant="outline" onClick={() => setFeedbackOpen((v) => !v)} disabled={drafting}>
-                <MessageSquare className="mr-1 h-3 w-3" />
-                Feedback
-              </Button>
-            )}
-            <Button size="sm" onClick={() => handleReview('approve')} disabled={!canApprove || drafting || review.isPending}>
-              <Check className="mr-1 h-3 w-3" />
-              Approve
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => handleReview('skip')} disabled={drafting || review.isPending}>
-              <X className="mr-1 h-3 w-3" />
-              Skip
-            </Button>
-          </div>
+          <DraftActions
+            drafted={!!email.drafted_at}
+            drafting={drafting}
+            pending={review.isPending}
+            canApprove={canApprove}
+            onDraft={() => onDraft(email.id)}
+            onToggleFeedback={() => setFeedbackOpen((v) => !v)}
+            onApprove={() => handleReview('approve')}
+            onSkip={() => handleReview('skip')}
+          />
 
           {feedbackOpen && (
-            <div className="space-y-2 rounded-md border border-dashed p-2">
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                maxLength={500}
-                placeholder="What should Claude change? e.g. They do have a test-drive form; open with the time lost replying to each request by email"
-                className="text-sm"
-              />
-              <div className="flex flex-wrap items-center gap-4 text-xs">
-                <label className="flex items-center gap-2">
-                  <Checkbox checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
-                  Remember for future drafts
-                </label>
-                {remember && lead.vertical && (
-                  <label className="flex items-center gap-2">
-                    <Checkbox checked={onlyVertical} onCheckedChange={(v) => setOnlyVertical(v === true)} />
-                    Only for {lead.vertical.replace(/_/g, ' ')} leads
-                  </label>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleFeedback} disabled={note.trim().length < 3 || drafting}>
-                  {drafting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 h-3 w-3" />}
-                  Redraft with feedback
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setFeedbackOpen(false)} disabled={drafting}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
+            <FeedbackForm
+              note={note}
+              remember={remember}
+              onlyVertical={onlyVertical}
+              vertical={lead.vertical}
+              drafting={drafting}
+              onNote={setNote}
+              onRemember={setRemember}
+              onOnlyVertical={setOnlyVertical}
+              onSubmit={handleFeedback}
+              onCancel={() => setFeedbackOpen(false)}
+            />
           )}
         </>
       )}

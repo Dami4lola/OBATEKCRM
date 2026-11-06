@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Json, LeadSignal } from '@/types/database'
+import type { Database, Json, Lead, LeadSignal, OutreachEmail, OutreachHook } from '@/types/database'
 import {
   countDraftsSince,
   fetchCopyExamples,
@@ -12,9 +12,10 @@ import {
   saveCopyFeedback,
   updateOutreachEmail,
 } from './adapters/obatek-crm'
-import { parseAudit, primaryHook } from './audit-findings'
-import { draftWithClaude } from './copywriter'
+import { parseAudit, primaryHook, type SiteAudit } from './audit-findings'
+import { draftWithClaude, type Draft } from './copywriter'
 import { runLeadAudit } from './run-audit'
+import type { OutreachSettings } from './settings'
 import { parseSteps, renderSteps, templateFor, templateVars, type PrepareEmailResult } from './templates'
 
 // One lead's draft: refresh the site check if needed, then Claude drafts the
@@ -47,22 +48,21 @@ export interface PrepareOptions {
   pagespeedKey: string | undefined
 }
 
-export async function prepareEmail(
-  crm: Crm,
-  emailId: string,
-  { feedback, placesKey, pagespeedKey }: PrepareOptions
-): Promise<PrepareEmailResult> {
+// The email and its lead, if it can be drafted
+async function loadDraftable(crm: Crm, emailId: string) {
   const email = await fetchOutreachEmail(crm, emailId)
   if (!email) throw new PrepareError('Email not found', 404)
   if (email.status !== 'draft') {
     throw new PrepareError(`This email is ${email.status}; only drafts can be redrafted`, 409)
   }
 
-  const [found, settings] = await Promise.all([fetchLead(crm, email.lead_id), fetchSettings(crm)])
-  if (!found) throw new PrepareError('Lead not found', 404)
-  let lead = found
+  const [lead, settings] = await Promise.all([fetchLead(crm, email.lead_id), fetchSettings(crm)])
+  if (!lead) throw new PrepareError('Lead not found', 404)
+  return { email, lead, settings }
+}
 
-  // Cost guard, counted since local midnight
+// Cost guard, counted since local midnight
+async function checkDraftCap(crm: Crm, settings: OutreachSettings) {
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
   if ((await countDraftsSince(crm, startOfDay)) >= settings.draft_daily_cap) {
@@ -71,37 +71,91 @@ export async function prepareEmail(
       429
     )
   }
+}
 
-  let audit = parseAudit(lead.audit)
+// The lead's site check, run again if it's missing or old
+async function currentAudit(
+  crm: Crm,
+  lead: Lead,
+  settings: OutreachSettings,
+  { placesKey, pagespeedKey }: Pick<PrepareOptions, 'placesKey' | 'pagespeedKey'>
+) {
+  const audit = parseAudit(lead.audit)
   const maxAgeMs = settings.audit_max_age_days * 86_400_000
   if (!audit || Date.now() - new Date(audit.audited_at).getTime() > maxAgeMs) {
-    const fresh = await runLeadAudit(crm, lead, {
+    return runLeadAudit(crm, lead, {
       checkReviews: false,
       lookupListing: true,
       placesKey,
       pagespeedKey,
     })
-    lead = fresh.lead
-    audit = fresh.audit
   }
-  // A recent job post beats anything the site check found (§3)
-  const signals = await fetchSignalsForLead(crm, lead.id, 10)
-  const signal = signals.find(
+  return { lead, audit }
+}
+
+function recentJobPost(signals: LeadSignal[]) {
+  return signals.find(
     (s): s is LeadSignal & { job_title: string } =>
       s.kind === 'job_post' &&
       s.fit === 'fit' &&
       !!s.job_title &&
       Date.now() - new Date(s.created_at).getTime() <= SIGNAL_MAX_AGE_DAYS * 86_400_000
   )
-  const hook = signal ? 'job_post' : audit ? primaryHook(audit, lead.vertical) : 'generic'
-  // Software seen in their job posts ("AppFolio, Buildium")
-  const software = [
+}
+
+// Software seen in their job posts ("AppFolio, Buildium")
+function softwareUsed(signals: LeadSignal[]): string[] {
+  return [
     ...new Set(
       signals
         .filter((s) => s.kind === 'technology' && s.fit === 'fit' && s.matched_term)
         .flatMap((s) => (s.matched_term as string).split(', '))
     ),
   ]
+}
+
+async function saveDraft(
+  crm: Crm,
+  email: OutreachEmail,
+  lead: Lead,
+  settings: OutreachSettings,
+  audit: SiteAudit | null,
+  hook: OutreachHook,
+  draft: Draft
+) {
+  const template = templateFor(settings.email_templates, lead.vertical)
+  const steps = renderSteps(
+    template.steps,
+    templateVars(lead, { opener: draft.opener, subject: draft.subject, senderName: settings.sender_name })
+  )
+  return updateOutreachEmail(crm, email.id, {
+    audit: (audit ?? {}) as unknown as Json,
+    primary_hook: hook,
+    opener: draft.opener || null,
+    linkedin_draft: draft.linkedin || null,
+    steps: steps as unknown as Json,
+    // A rejected draft isn't Claude's; whatever Dami writes is "human"
+    draft_steps: draft.problems.length ? null : (steps as unknown as Json),
+    template_key: template.key,
+    model: draft.model,
+    author: draft.problems.length ? null : 'claude',
+    drafted_at: new Date().toISOString(),
+  })
+}
+
+export async function prepareEmail(
+  crm: Crm,
+  emailId: string,
+  { feedback, placesKey, pagespeedKey }: PrepareOptions
+): Promise<PrepareEmailResult> {
+  const { email, lead: found, settings } = await loadDraftable(crm, emailId)
+  await checkDraftCap(crm, settings)
+  const { lead, audit } = await currentAudit(crm, found, settings, { placesKey, pagespeedKey })
+
+  // A recent job post beats anything the site check found (§3)
+  const signals = await fetchSignalsForLead(crm, lead.id, 10)
+  const signal = recentJobPost(signals)
+  const hook = signal ? 'job_post' : audit ? primaryHook(audit, lead.vertical) : 'generic'
 
   const [examples, rules] = await Promise.all([
     fetchCopyExamples(crm, lead.vertical, settings.example_max_in_prompt),
@@ -116,7 +170,7 @@ export async function prepareEmail(
     examples,
     rules,
     signal: signal && { job_title: signal.job_title, posted_at: signal.posted_at, excerpt: signal.excerpt },
-    software,
+    software: softwareUsed(signals),
     revision: feedback && {
       subject: feedback.subject ?? parseSteps(email.steps)[0]?.subject ?? '',
       opener: feedback.opener ?? email.opener ?? '',
@@ -134,24 +188,7 @@ export async function prepareEmail(
     })
   }
 
-  const template = templateFor(settings.email_templates, lead.vertical)
-  const steps = renderSteps(
-    template.steps,
-    templateVars(lead, { opener: draft.opener, subject: draft.subject, senderName: settings.sender_name })
-  )
-  const updated = await updateOutreachEmail(crm, email.id, {
-    audit: (audit ?? {}) as unknown as Json,
-    primary_hook: hook,
-    opener: draft.opener || null,
-    linkedin_draft: draft.linkedin || null,
-    steps: steps as unknown as Json,
-    // A rejected draft isn't Claude's; whatever Dami writes is "human"
-    draft_steps: draft.problems.length ? null : (steps as unknown as Json),
-    template_key: template.key,
-    model: draft.model,
-    author: draft.problems.length ? null : 'claude',
-    drafted_at: new Date().toISOString(),
-  })
+  const updated = await saveDraft(crm, email, lead, settings, audit, hook, draft)
   if (email.run_id) await markRunAwaitingReview(crm, email.run_id)
 
   return { email: updated, lead, problems: draft.problems }

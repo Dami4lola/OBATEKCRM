@@ -114,9 +114,39 @@ function baseLead(state: LicenseState, company: string, sourceRef: string): Lice
   }
 }
 
+function agentsNote(size: number | null, agentCount: number): string {
+  return size ? `${agentCount} licensed agent${agentCount === 1 ? '' : 's'}` : 'no licensed agents (property manager)'
+}
+
 // ---------- Texas: TREC broker companies, designated broker, agent count ----------
 
 const TX = { domain: 'data.texas.gov', dataset: 's7ft-44qi' }
+
+function texasBroker(row: Row): string | null {
+  if (row.related_license_type !== 'Broker Individual' || !row.related_license_full_name?.trim()) return null
+  return titleCase([row.related_license_full_name, row.related_license_suffix].filter(Boolean).join(' '))
+}
+
+function texasCandidate(row: Row, license: string, name: string, agentCount: number, size: number | null, now: Date): Candidate {
+  const company = titleCase(name)
+  const broker = texasBroker(row)
+  const licensedAt = parseUsDate(row.original_license_date)
+  const lead = baseLead('TX', company, `TX-TREC:${license}`)
+  lead.contact_name = broker ?? company
+  lead.owner_name = broker
+  lead.job_title = broker ? 'Designated broker' : null
+  lead.staff_size = size
+  lead.notes = [
+    `Texas real estate licence ${license} (TREC)`,
+    row.county ? `${row.county} County` : null,
+    licensedAt ? `licensed ${isoDay(licensedAt)}` : null,
+    agentsNote(size, agentCount),
+    newLicenseNote(licensedAt, now),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return { lead, licensedAt }
+}
 
 async function texas(query: QueryFn, options: LicenseListOptions): Promise<LicenseLead[]> {
   const [companies, agentCounts] = await Promise.all([
@@ -142,28 +172,7 @@ async function texas(query: QueryFn, options: LicenseListOptions): Promise<Licen
     // The designated broker counts too
     const size = agentCount > 0 ? agentCount + 1 : null
     if (!sizeOk(size, name, options.staffRange)) continue
-
-    const company = titleCase(name)
-    const broker =
-      row.related_license_type === 'Broker Individual' && row.related_license_full_name?.trim()
-        ? titleCase([row.related_license_full_name, row.related_license_suffix].filter(Boolean).join(' '))
-        : null
-    const licensedAt = parseUsDate(row.original_license_date)
-    const lead = baseLead('TX', company, `TX-TREC:${license}`)
-    lead.contact_name = broker ?? company
-    lead.owner_name = broker
-    lead.job_title = broker ? 'Designated broker' : null
-    lead.staff_size = size
-    lead.notes = [
-      `Texas real estate licence ${license} (TREC)`,
-      row.county ? `${row.county} County` : null,
-      licensedAt ? `licensed ${isoDay(licensedAt)}` : null,
-      size ? `${agentCount} licensed agent${agentCount === 1 ? '' : 's'}` : 'no licensed agents (property manager)',
-      newLicenseNote(licensedAt, options.now),
-    ]
-      .filter(Boolean)
-      .join(' · ')
-    candidates.push({ lead, licensedAt })
+    candidates.push(texasCandidate(row, license, name, agentCount, size, options.now))
   }
   return sortCandidates(candidates, options.newFirst)
 }
@@ -179,6 +188,39 @@ function nyKey(name: string | undefined, zip: string | undefined): string {
   return `${(name ?? '').trim().toUpperCase()}|${(zip ?? '').trim().slice(0, 5)}`
 }
 
+// Each office's principal broker, and how many associate brokers it has
+function newYorkBrokers(brokers: Row[]) {
+  const principal = new Map<string, string>()
+  const associates = new Map<string, number>()
+  for (const row of brokers) {
+    const key = nyKey(row.business_name, row.business_zip)
+    if (NY_PRINCIPAL_BROKER.test(row.license_type ?? '') && row.license_holder_name && !principal.has(key)) {
+      principal.set(key, reorderLastFirst(row.license_holder_name))
+    } else if (row.license_type === 'ASSOCIATE BROKER') {
+      associates.set(key, (associates.get(key) ?? 0) + 1)
+    }
+  }
+  return { principal, associates }
+}
+
+function newYorkCandidate(row: Row, license: string, name: string, broker: string | null, agentCount: number, size: number | null): Candidate {
+  const company = titleCase(name)
+  const lead = baseLead('NY', company, `NY-DOS:${license}`)
+  lead.contact_name = broker ?? company
+  lead.owner_name = broker
+  lead.job_title = broker ? 'Broker' : null
+  lead.staff_size = size
+  lead.city = row.business_city ? titleCase(row.business_city) : null
+  lead.notes = [
+    `New York real estate office licence ${license} (DOS)`,
+    [row.business_address_1, row.business_city, row.business_zip].filter(Boolean).map((p) => titleCase(p as string)).join(', ') || null,
+    agentsNote(size, agentCount),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return { lead, licensedAt: null }
+}
+
 async function newYork(query: QueryFn, options: LicenseListOptions): Promise<LicenseLead[]> {
   const counties = countyClause(options.counties)
   const [offices, brokers, salespersons] = await Promise.all([
@@ -192,16 +234,7 @@ async function newYork(query: QueryFn, options: LicenseListOptions): Promise<Lic
     }),
   ])
 
-  const principal = new Map<string, string>()
-  const associates = new Map<string, number>()
-  for (const row of brokers) {
-    const key = nyKey(row.business_name, row.business_zip)
-    if (NY_PRINCIPAL_BROKER.test(row.license_type ?? '') && row.license_holder_name && !principal.has(key)) {
-      principal.set(key, reorderLastFirst(row.license_holder_name))
-    } else if (row.license_type === 'ASSOCIATE BROKER') {
-      associates.set(key, (associates.get(key) ?? 0) + 1)
-    }
-  }
+  const { principal, associates } = newYorkBrokers(brokers)
   const agents = new Map(salespersons.map((row) => [nyKey(row.business_name, row.business_zip), Number(row.agents ?? 0)]))
 
   const candidates: Candidate[] = []
@@ -215,23 +248,7 @@ async function newYork(query: QueryFn, options: LicenseListOptions): Promise<Lic
     const agentCount = (agents.get(key) ?? 0) + (associates.get(key) ?? 0)
     const size = agentCount > 0 ? agentCount + 1 : null
     if (!sizeOk(size, name, options.staffRange)) continue
-
-    const company = titleCase(name)
-    const broker = principal.get(key) ?? null
-    const lead = baseLead('NY', company, `NY-DOS:${license}`)
-    lead.contact_name = broker ?? company
-    lead.owner_name = broker
-    lead.job_title = broker ? 'Broker' : null
-    lead.staff_size = size
-    lead.city = row.business_city ? titleCase(row.business_city) : null
-    lead.notes = [
-      `New York real estate office licence ${license} (DOS)`,
-      [row.business_address_1, row.business_city, row.business_zip].filter(Boolean).map((p) => titleCase(p as string)).join(', ') || null,
-      size ? `${agentCount} licensed agent${agentCount === 1 ? '' : 's'}` : 'no licensed agents (property manager)',
-    ]
-      .filter(Boolean)
-      .join(' · ')
-    candidates.push({ lead, licensedAt: null })
+    candidates.push(newYorkCandidate(row, license, name, principal.get(key) ?? null, agentCount, size))
   }
   // New York's office list has no licence date
   return sortCandidates(candidates, false)
