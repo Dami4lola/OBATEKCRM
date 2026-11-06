@@ -5,6 +5,7 @@ import { DollarSign, Building2, User } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScoreBadge } from '@/components/outreach/score-badge'
 import { scoreLead } from '@/lib/outreach/scoring'
+import { paymentTermsLabel } from '@/lib/utils'
 import type { OutreachSettings } from '@/lib/outreach/settings'
 import type { Lead } from '@/types/database'
 
@@ -63,7 +64,9 @@ export function LeadCard({ lead, index, onClick, settings }: LeadCardProps) {
                 <div className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
                   <DollarSign className="h-3 w-3" />
                   <span>{Number(lead.value).toLocaleString()}</span>
-                  <span className="truncate">{lead.payment_terms}</span>
+                  {lead.payment_terms && (
+                    <span className="truncate">/ {paymentTermsLabel(lead.payment_terms)}</span>
+                  )}
                 </div>
               )}
             </CardContent>

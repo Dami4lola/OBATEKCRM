@@ -63,7 +63,7 @@ import {
   type LeadFormData,
 } from '@/lib/validations/lead'
 import { LeadOutreachFields } from './lead-outreach-fields'
-import { externalUrl } from '@/lib/utils'
+import { externalUrl, paymentTermsLabel } from '@/lib/utils'
 import { LeadSiteCheck } from './lead-site-check'
 import { LeadSignals } from './lead-signals'
 import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
@@ -154,7 +154,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
         <SheetHeader className="space-y-1">
-          <div className="flex items-center justify-between">
+          {/* pr-8 keeps the delete button clear of the sheet's close X */}
+          <div className="flex items-center justify-between pr-8">
             <SheetTitle className="text-xl">{lead.contact_name}</SheetTitle>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -192,7 +193,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           )}
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-6 px-4 pb-6">
           {!isEditing ? (
             <>
               {/* Contact Info */}
@@ -284,7 +285,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                       ${Number(lead.value).toLocaleString()}
                       {lead.payment_terms && (
                         <span className="text-muted-foreground font-normal ml-1">
-                          / {lead.payment_terms === 'one_time' ? 'one time' : lead.payment_terms === 'monthly' ? 'mo' : 'hr'}
+                          / {paymentTermsLabel(lead.payment_terms)}
                         </span>
                       )}
                     </span>

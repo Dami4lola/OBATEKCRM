@@ -5,6 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// "one_time" as people read it, after a price: "$4,800 / one time"
+export function paymentTermsLabel(terms: 'one_time' | 'monthly' | 'hourly' | null): string | null {
+  if (terms === 'one_time') return 'one time'
+  if (terms === 'monthly') return 'mo'
+  if (terms === 'hourly') return 'hr'
+  return null
+}
+
 // Link for a stored URL: http(s) only, "example.com" becomes https://example.com,
 // anything with another scheme (javascript:, data:) returns null
 export function externalUrl(value: string | null | undefined): string | null {
