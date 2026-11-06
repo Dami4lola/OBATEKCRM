@@ -1,4 +1,5 @@
 import type { OutreachMode, OutreachSetting } from '@/types/database'
+import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_SENDER_NAME } from './default-templates'
 
 export interface OutreachSettings {
   source_stage_name: string
@@ -126,78 +127,8 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   audit_daily_cap: 800,
   generic_email_keep_score: 7,
   small_business_max_staff: 50,
-  // Mirrors 009_write_step.sql, 012_car_dealer_template.sql, 015_agencies.sql and 018_property.sql; edit there (or in the settings table)
-  email_templates: {
-    default: [
-      {
-        step: 1,
-        subject: '{{subject}}',
-        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK here in Ottawa. We set up simple tools for trades businesses: online quotes and booking, job tracking, and an AI receptionist that picks up when you're on a job.\n\nWould a free one-page audit of how {{company}} handles calls and quotes be useful?\n\n{{sender_name}}",
-      },
-      {
-        step: 2,
-        subject: 're: {{subject}}',
-        body: 'Hi {{first_name}},\n\nFollowing up in case my last note got buried. If missed calls or slow quotes ever cost {{company}} a job, the free audit would show where. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}',
-      },
-      {
-        step: 3,
-        subject: 're: {{subject}}',
-        body: 'Hi {{first_name}},\n\nI\'ll leave it here. If it\'s ever useful, reply "audit" and I\'ll put it together for {{company}}.\n\n{{sender_first_name}}',
-      },
-    ],
-    car_dealer: [
-      {
-        step: 1,
-        subject: '{{subject}}',
-        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK here in Ottawa. We help dealerships let buyers book test drives online, follow up on every enquiry, and answer calls with an AI receptionist when the team is busy or the lot is closed.\n\nWould a free one-page audit of how {{company}} handles calls and buyer enquiries be useful?\n\n{{sender_name}}",
-      },
-      {
-        step: 2,
-        subject: 're: {{subject}}',
-        body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If a missed call or a slow reply to a test-drive request ever cost {{company}} a sale, the free audit would show where. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
-      },
-      {
-        step: 3,
-        subject: 're: {{subject}}',
-        body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
-      },
-    ],
-    agency: [
-      {
-        step: 1,
-        subject: '{{subject}}',
-        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK, a small automation shop. We set up the back office for agencies like {{company}}: instant follow-up on every new inquiry, an AI receptionist for your sales line during client calls, and discovery calls booked straight onto your calendar.\n\nWould a free one-page audit of how {{company}} handles new inquiries be useful?\n\n{{sender_name}}",
-      },
-      {
-        step: 2,
-        subject: 're: {{subject}}',
-        body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If a good lead ever went cold while the team was heads-down on client work, the free audit would show where {{company}}'s inquiries slip. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
-      },
-      {
-        step: 3,
-        subject: 're: {{subject}}',
-        body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
-      },
-    ],
-    property: [
-      {
-        step: 1,
-        subject: '{{subject}}',
-        body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK, a small automation shop. For property managers and brokerages like {{company}}, we set up a CRM that keeps every lead, tenant and owner in one place, instant replies to inquiries, and an AI receptionist for after-hours calls.\n\nWould a free one-page audit of how {{company}} handles calls and inquiries be useful?\n\n{{sender_name}}",
-      },
-      {
-        step: 2,
-        subject: 're: {{subject}}',
-        body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If an inquiry or a maintenance call ever slipped through while the team was out at a showing, the free audit would show where {{company}} loses them. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
-      },
-      {
-        step: 3,
-        subject: 're: {{subject}}',
-        body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
-      },
-    ],
-  },
-  sender_name: 'Dami Ayoade',
+  email_templates: DEFAULT_EMAIL_TEMPLATES,
+  sender_name: DEFAULT_SENDER_NAME,
   copy_model: 'claude-opus-5-5',
   draft_daily_cap: 300,
   // Each draft is a Claude call of up to ~30s; a tick should finish well

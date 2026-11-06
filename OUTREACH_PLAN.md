@@ -262,10 +262,10 @@ In **auto mode**, Step 3 is skipped.
 Block if:
 - the lead has no email
 - the email or its domain is in `suppression_list`
-- **Canada (CASL):** `country = 'CA'` and `email_source` is not `website`, or the country is unknown
+- **Canada (CASL):** `country = 'CA'` and `email_source` is not `website`, or the country is unknown. Addresses at exactly `obatek.net` skip this check (your own inboxes, for testing); every other check still applies
 - the lead was sent outreach within `resequence_cooldown_days` (180)
 - another lead in the same run has the same lowercased email
-- the lead already has a draft, approved or queued email in another live run (the daily Buying signals run drafts leads that are still in New). Cancelled and failed runs don't count: cancelling a run skips its unsent emails, so nothing queued goes out and its leads can join a new run
+- the lead already has a draft, approved or queued email in another live run (the daily Buying signals run drafts leads that are still in New). Cancelled and failed runs don't count: cancelling a run skips its unsent emails, so nothing queued goes out and its leads can join a new run. Follow-ups to an email already sent carry on after Cancel, by choice; a reply or opt-out still stops them
 
 The CASL basis for each lead is its `email_source`: the address was published by the business, and the pitch relates to their role. Website-found emails from the audit (§5) give Places leads this basis automatically. **Confirm the CASL details with a lawyer before scaling Canadian sends** (Build Plan).
 
@@ -376,7 +376,7 @@ Sending runs in-house from the **getobatek.com Microsoft 365 mailbox** through M
 ### Inbox sync (stage 7.3; `inbox-events.ts`, `inbox-sync.ts`; replaces Instantly polling)
 - **When:** each tick, before sending, and when the pop-up opens (skipped if read in the last 2 minutes).
 - **What:** `GET /me/messages` in every folder (Junk included) since the watermark minus 5 minutes, skipping drafts and our own mail. The watermark is `outreach_mailbox.inbox_checked_at`.
-- **Matching:** same thread (`conversationId`), then the lead's address (emails sent in the last 60 days), then a colleague at the lead's company domain (never a free-mail domain). Bounce notices match by thread or by an address in the notice.
+- **Matching:** same thread (`conversationId`), then the lead's address (emails sent in the last 60 days), then a colleague at the lead's company domain (never a free-mail domain). Address and domain matches only count for mail received after the send: the sync re-reads 5 minutes of mail, so something they wrote just before can come up again. Bounce notices match by thread or by an address in the notice.
 - **Bounce notices:** from postmaster/mailer-daemon/MicrosoftExchange…, or an "Undeliverable"-type subject. 5.x.x → `bounced_at`, `hard_bounce` suppression, sequence stopped; 4.x.x is ignored (Microsoft retries). Sender-blocked codes (5.7.233, 5.7.708, 5.1.8, 5.7.705, 5.7.750, 5.7.501, 5.7.511) pause sending at once.
 - **Auto-replies:** by `Auto-Submitted`, `X-Autoreply`, `X-Autorespond`, `Precedence` or an "Automatic reply" subject. They push the next follow-up back.
 - **Replies:** `replied_at`, sequence stopped. Only the new text counts: the quoted email (with our footer) is cut off. "STOP" on its own or unsubscribe wording → `unsubscribed_at`, `unsubscribe` suppression (the lead, and the colleague who asked). Otherwise Haiku (`reply_model`) labels it, up to 10 a sync; a Claude `unsubscribe` label does the same.
@@ -407,19 +407,22 @@ Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both 
 
 ---
 
-## 12. Metrics (`src/components/outreach/outreach-stats.tsx`)
+## 12. Results page (`results.ts`, `src/components/results/`, built)
 
 **The one number:** meetings booked per 100 leads contacted, **split by channel**. It shows whether the problem is the list, the message or the follow-through.
 
-- **Channel of a lead** = its first outreach touch:
+- **Dates:** any start and end, opening on the last 30 days. The page covers leads first contacted in those dates and follows them, so a reply or meeting after the end date still counts.
+- **Channel of a lead** = its first outreach touch, across all time:
   - `email`: first `outreach_emails.sent_at`
   - `call`: first `call` activity
-  - `linkedin`: first activity with `meta.channel='linkedin'`
+  - LinkedIn isn't counted: notes are sent by hand and nothing records them.
 - **Meetings:** `meetings` rows for that lead after the first touch.
-- **Supporting metrics:**
-  - leads sourced and qualified per week (`lead_source`, `score ≥ threshold`, `created_at`)
-  - reply and bounce rate (per sending mailbox once there's more than one)
-  - calls per day and connect rate (`call` activity outcomes)
+- **Email results:** leads emailed, reply rate, bounce rate, unsubscribes, replies by label, and where seed copies landed. Out of office is listed but isn't a reply. Opens aren't tracked and reply wording isn't stored.
+- **What worked best:** reply rate by industry (`vertical`) and by what the email led with (`primary_hook`).
+- `OWN_DOMAINS` addresses are left out, so test emails can't skew the numbers.
+- **Not built yet:**
+  - leads sourced and qualified per week
+  - calls per day and connect rate
   - meetings → won deals
 - **Cost per qualified lead:** Places + PageSpeed + Claude calls are counted per sourcing run (an open question in the Build Plan). Log the call counts in the sourcing response, then work out the cost by hand from current pricing.
 
@@ -433,7 +436,7 @@ Week 3's first sends need 2–3 weeks of warm-up, so this has to start in Week 1
 - [x] **Microsoft 365** mailbox on getobatek.com, in its own tenant (separate from obatek.net)
 - [x] DNS: MX, SPF, DKIM (on), DMARC (`p=none` with reports to the mailbox; move to `p=quarantine` once reports are clean)
 - [x] Entra app registered; mailbox connected in Settings
-- [ ] `MAIL_TOKEN_KEY`, `OBATEK_MAILING_ADDRESS` in `.env.local` (a PO box or virtual mailbox is fine for the address)
+- [ ] `MAIL_TOKEN_KEY`, `OBATEK_MAILING_ADDRESS` in `.env.local` (a street address, such as a virtual office, covers both laws; CASL accepts a postal box, but CAN-SPAM names USPS-registered boxes, so a Canada Post box is doubtful for US leads. It must stay valid for 60 days after the last send)
 - [ ] Add your own Gmail/Outlook inboxes to `seed_addresses`; send some real 1:1 mail from the mailbox and get replies
 - [ ] Turn `sending_paused` off; the ramp starts at 5 a day with the first send
 - [ ] Google Cloud project with the Places API (New) + PageSpeed enabled; keys in `.env.local`
@@ -450,6 +453,7 @@ The Gmail account (obatekoutreach@gmail.com) is **not** used for sending.
 src/lib/outreach/                 # engine core: pure functions only (lint-enforced)
   settings.ts          ✅
   compliance.ts        ✅
+  errors.ts            ✅ # readable text from any thrown value, Supabase's plain objects included
   sourcing.ts          ✅ # Places search → candidate leads, dedupe
   scoring.ts           ✅
   call-brief.ts        ✅
@@ -480,6 +484,8 @@ src/lib/outreach/                 # engine core: pure functions only (lint-enfor
   prepare-email.ts     ✅ # one draft: audit refresh, Claude, template (Write step and scheduler)
   scheduler.ts         ✅ # start due runs, write pending drafts
   stats.ts             ✅ # event titles, reply labels, auto-pause rule
+  results.ts           ✅ # the sums behind the Results page (§12)
+  default-templates.ts ✅ # default email wording and sender; the demo build swaps this file
   reply-classifier.ts  ✅ # Haiku labels a reply (server only)
   prompts/
     copy-system.md
@@ -496,7 +502,7 @@ src/components/outreach/
   outreach-run-dialog.tsx ✅  gather-step.tsx ✅  schedule-step.tsx ✅  active-runs.tsx ✅
   find-leads-dialog.tsx ✅  us-batch-search.tsx ✅  check-sites-dialog.tsx ✅  todays-calls-dialog.tsx ✅  score-badge.tsx ✅
 src/components/leads/lead-site-check.tsx ✅
-  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  seed-checks.tsx ✅  mailbox-card.tsx ✅  outreach-stats.tsx
+  write-step.tsx ✅  send-panel.tsx ✅  copy-rules-panel.tsx ✅  recent-replies.tsx ✅  seed-checks.tsx ✅  mailbox-card.tsx ✅
 src/app/api/outreach/
   source/route.ts          ✅ # Places search + dedupe + insert
   audit/route.ts           ✅ # site check (+ optional reviews), one lead
@@ -507,7 +513,14 @@ src/app/api/outreach/
   cron/tick/route.ts        ✅ # due runs + drafts + inbox + sending (CRON_SECRET)
   stats/sync/route.ts       ✅ # inbox sync when the pop-up opens
 scripts/outreach-scheduler.mjs ✅
+src/components/results/           ✅ # the Results page (§12)
+
+demo/                             ✅ # browser-only demo of the real screens on false data
+  build.mjs  serve.mjs  frame.tsx  tips.tsx
+  fake-client.ts  fake-api.ts  store.ts  false-data.ts  sample-copy.ts  default-templates.ts
 ```
+
+**Demo:** `npm run demo:build` writes static files to `demo-out/`, and `npm run demo:serve` opens them on `localhost:3100` for a screen share. The same files can go on any static host. There is no server or database: `fake-client.ts` replaces `createClient()` with an in-memory copy of the tables and `fake-api.ts` answers `/api/outreach/*` in the browser. Changes reset on refresh. A new table the screens read needs adding to `false-data.ts`, and a new query method to `fake-client.ts`, or the demo throws. The build fails if the output holds a key, the Supabase address, the mailing address, Dami's name or the real template wording.
 
 The current `queries/outreach.ts` uses the browser client directly for gather and run creation. That's fine for CRM UI; engine work that runs on the server (source, prepare, send, tick) goes through `adapters/obatek-crm.ts`.
 
@@ -532,7 +545,7 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 5 ✅ | `009_write_step.sql`; Write step in the pop-up (Start run → drafts, or Review on an active run); Draft all with Claude; edit opener or full emails; approve/skip/undo | 20 drafts approved in the pop-up |
 | 3 | 6 ✅ | `010_send.sql`; Instantly send + move to Contacted (Instantly; replaced by 7.1–7.3) | — |
 | 3 | 7 ✅ | `013_scheduler_stats.sql`; scheduler + Instantly stats polling (scheduler kept; Instantly replaced by 7.1–7.3) | A scheduled run fires on time |
-| 3 | 7.1 ✅ | `014_mailbox.sql`; Entra app; connect/reconnect/disconnect; encrypted token; legacy Outlook code removed | "Connected: …@getobatek.com" shows in Settings |
+| 3 | 7.1 ✅ | `014_mailbox.sql`, `020_mailbox_update.sql`; Entra app; connect/reconnect/disconnect; encrypted token; legacy Outlook code removed | "Connected: …@getobatek.com" shows in Settings |
 | 3 | 7.2 ✅ | Graph send queue, pacing, send window, warm-up ramp, threaded follow-ups, stop rules, test send; Instantly sending retired | The full 3-step sequence to 2–3 of your own addresses arrives threaded in Gmail and Outlook |
 | 3 | 7.3 ✅ | Inbox sync (replies, auto-replies, bounce notices, opt-out replies, blocked-sender pause); seed placement checks | A reply stops the sequence and shows in Recent replies; "unsubscribe" adds the address to suppression within one tick; then the ramp runs toward 20 a day |
 | 3 | 7.4 | `015_agencies.sql`; agency vertical and template; Agencies (US) batch search; agency profile in the site check (services, GoHighLevel, off-target); staff range per vertical; agency hooks and copy | 300+ agencies in New; branding/social/enterprise ones score below zero; openers talk about their inquiries, not their site |
@@ -542,7 +555,9 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 3 | 7.5 | `018_property.sql`; `property` vertical (keywords, template, copy, call question); Property (US) batch search sharing the agency states; car dealers and property added to `target_verticals`; property roles in buying signals | 100+ property managers and brokerages in New; openers about inquiries and after-hours calls |
 | 4 | 8.1a ✅ | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |
 | 4 | 8.1b ✅ | Signal leads audited automatically; `job_post` hook and a LinkedIn note drafted with the email; a daily "Buying signals" run for one-click review | 10–20 signal emails a day approved; 10%+ reply rate |
-| 4 | 8 | Jo case study; audit PDF offer; metrics panel (§12) | Meetings per 100 contacted shown by channel |
+| 4 | 8.2 ✅ | Results page (§12) | Meetings per 100 contacted shown by channel, for any dates |
+| 4 | 8.3 ✅ | Browser demo (`demo/`) for screen shares and the website | Every button works or says it's off, and nothing leaves the page |
+| 4 | 8 | Jo case study; audit PDF offer | Case study and audit PDF ready to send |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
 | later | 10 | Generic webhook + CSV adapters; extraction to a service; enterprise features per deal | A real deal asks for it |
 

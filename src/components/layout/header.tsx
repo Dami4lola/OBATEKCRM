@@ -13,9 +13,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { MobileNav, type NavItem } from '@/components/layout/sidebar'
 import { useEffect, useMemo, useState } from 'react'
 
-export function Header() {
+export function Header({ items }: { items?: NavItem[] }) {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -45,7 +46,7 @@ export function Header() {
   return (
     <header className="flex h-16 items-center justify-between border-b bg-white dark:bg-gray-950 px-6">
       <div className="flex items-center gap-4">
-        {/* Mobile menu could go here */}
+        <MobileNav items={items} />
       </div>
 
       <div className="flex items-center gap-4">
