@@ -21,7 +21,7 @@ import {
 import { useOutreachSettings } from '@/lib/queries/outreach'
 import { useUpdateLead } from '@/lib/queries/leads'
 import { auditFindings, HOOK_LABELS, parseAudit, primaryHook } from '@/lib/outreach/audit-findings'
-import { parseSteps, renderSteps, templateFor, templateVars, wordCount } from '@/lib/outreach/templates'
+import { defaultSubject, parseSteps, renderSteps, templateFor, templateVars, wordCount } from '@/lib/outreach/templates'
 import type { OutreachSettings } from '@/lib/outreach/settings'
 import { REPLY_CLASS_LABELS } from '@/lib/outreach/stats'
 import type { OutreachEmail, OutreachEmailStep } from '@/types/database'
@@ -305,14 +305,15 @@ interface EmailCardProps {
   settings: OutreachSettings
   drafting: boolean
   onDraft: (emailId: string, feedback?: DraftFeedback) => void
+  onDecided: () => void
 }
 
 // Remounted (by key) whenever the email is redrafted or reviewed, so its
 // fields always start from what's saved
-function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
+function EmailCard({ item, settings, drafting, onDraft, onDecided }: EmailCardProps) {
   const { email, lead } = item
   const saved = parseSteps(email.steps)
-  const [subject, setSubject] = useState(saved[0]?.subject ?? '')
+  const [subject, setSubject] = useState(saved[0]?.subject ?? defaultSubject(lead))
   const [opener, setOpener] = useState(email.opener ?? '')
   const [customSteps, setCustomSteps] = useState<OutreachEmailStep[] | null>(null)
   const [showFollowUps, setShowFollowUps] = useState(false)
@@ -334,7 +335,8 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   const audit = parseAudit(email.audit) ?? parseAudit(lead.audit)
   const hook = email.primary_hook ?? (audit ? primaryHook(audit, lead.vertical) : null)
   const findings = audit ? auditFindings(audit, lead.vertical).slice(0, 4) : []
-  const canApprove = !!steps[0]?.subject.trim() && (customSteps !== null || opener.trim().length > 0)
+  // The opening line is optional: the template reads fine without one
+  const canApprove = !!steps[0]?.subject.trim() && !!steps[0]?.body.trim()
 
   const editStep = (index: number, body: string) => {
     setCustomSteps((current) =>
@@ -369,6 +371,7 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   const handleReview = async (action: 'approve' | 'skip' | 'reopen') => {
     try {
       await review.mutateAsync({ email, action, steps, opener })
+      if (action !== 'reopen') onDecided()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save')
     }
@@ -377,34 +380,79 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
   const reviewed = email.status !== 'draft'
 
   return (
-    <div className={`space-y-3 rounded-md border p-3 ${reviewed ? 'bg-muted/30' : ''}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {lead.company_name || lead.contact_name}
-            {lead.city && <span className="font-normal text-muted-foreground"> · {lead.city}</span>}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">{lead.email}</p>
-        </div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-sm">
+          <span className="font-medium">{lead.company_name || lead.contact_name}</span>
+          <span className="text-muted-foreground">
+            {lead.city && ` · ${lead.city}`}
+            {lead.email && ` · ${lead.email}`}
+          </span>
+        </p>
         <StatusBadge status={email.status} />
       </div>
 
-      {(hook || findings.length > 0) && (
-        <div className="space-y-1">
-          {hook && <Badge variant="outline">{HOOK_LABELS[hook]}</Badge>}
-          {findings.length > 0 && (
-            <p className="text-xs text-muted-foreground">{findings.join(' · ')}</p>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="min-w-0 space-y-3">
+          {reviewed ? (
+            <ReviewedEmail email={email} step={saved[0]} pending={review.isPending} onReopen={() => handleReview('reopen')} />
+          ) : (
+            <>
+              <div className="grid gap-2">
+                <Input
+                  value={subject}
+                  onChange={(e) => {
+                    setSubject(e.target.value)
+                    setCustomSteps(null)
+                  }}
+                  placeholder="subject (lowercase, 2–5 words)"
+                />
+                <Textarea
+                  value={opener}
+                  onChange={(e) => {
+                    setOpener(e.target.value)
+                    setCustomSteps(null)
+                  }}
+                  rows={2}
+                  placeholder="Opening line: one specific observation about their business"
+                />
+              </div>
+
+              {customSteps ? (
+                <Textarea
+                  value={steps[0]?.body ?? ''}
+                  onChange={(e) => editStep(0, e.target.value)}
+                  rows={9}
+                  className="text-sm"
+                />
+              ) : (
+                <p className="whitespace-pre-line rounded bg-muted/50 p-2 text-sm">{steps[0]?.body}</p>
+              )}
+              <EmailTools
+                words={wordCount(steps[0]?.body ?? '')}
+                editing={!!customSteps}
+                showFollowUps={showFollowUps}
+                onEdit={() => setCustomSteps(rendered)}
+                onBackToTemplate={() => setCustomSteps(null)}
+                onToggleFollowUps={() => setShowFollowUps((v) => !v)}
+              />
+            </>
           )}
         </div>
-      )}
 
-      {hook === 'job_post' && <SignalDraftExtras email={email} lead={lead} />}
+        <div className="min-w-0 space-y-3">
+          {(hook || findings.length > 0) && (
+            <div className="space-y-1">
+              {hook && <Badge variant="outline" className="max-w-full whitespace-normal">{HOOK_LABELS[hook]}</Badge>}
+              {findings.length > 0 && (
+                <p className="text-xs text-muted-foreground">{findings.join(' · ')}</p>
+              )}
+            </div>
+          )}
 
-      {reviewed ? (
-        <ReviewedEmail email={email} step={saved[0]} pending={review.isPending} onReopen={() => handleReview('reopen')} />
-      ) : (
-        <>
-          {templateKeys.length > 1 && (
+          {hook === 'job_post' && <SignalDraftExtras email={email} lead={lead} />}
+
+          {!reviewed && templateKeys.length > 1 && (
             <TemplatePicker
               keys={templateKeys}
               value={template.key}
@@ -412,59 +460,10 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
               onChange={handleTemplate}
             />
           )}
-          <div className="grid gap-2">
-            <Input
-              value={subject}
-              onChange={(e) => {
-                setSubject(e.target.value)
-                setCustomSteps(null)
-              }}
-              placeholder="subject (lowercase, 2–5 words)"
-            />
-            <Textarea
-              value={opener}
-              onChange={(e) => {
-                setOpener(e.target.value)
-                setCustomSteps(null)
-              }}
-              rows={2}
-              placeholder="Opening line: one specific observation about their business"
-            />
-          </div>
 
-          {customSteps ? (
-            <Textarea
-              value={steps[0]?.body ?? ''}
-              onChange={(e) => editStep(0, e.target.value)}
-              rows={9}
-              className="text-sm"
-            />
-          ) : (
-            <p className="whitespace-pre-line rounded bg-muted/50 p-2 text-sm">{steps[0]?.body}</p>
-          )}
-          <EmailTools
-            words={wordCount(steps[0]?.body ?? '')}
-            editing={!!customSteps}
-            showFollowUps={showFollowUps}
-            onEdit={() => setCustomSteps(rendered)}
-            onBackToTemplate={() => setCustomSteps(null)}
-            onToggleFollowUps={() => setShowFollowUps((v) => !v)}
-          />
+          {!reviewed && showFollowUps && <FollowUpSteps steps={steps} editing={!!customSteps} onEdit={editStep} />}
 
-          {showFollowUps && <FollowUpSteps steps={steps} editing={!!customSteps} onEdit={editStep} />}
-
-          <DraftActions
-            drafted={!!email.drafted_at}
-            drafting={drafting}
-            pending={review.isPending}
-            canApprove={canApprove}
-            onDraft={() => onDraft(email.id)}
-            onToggleFeedback={() => setFeedbackOpen((v) => !v)}
-            onApprove={() => handleReview('approve')}
-            onSkip={() => handleReview('skip')}
-          />
-
-          {feedbackOpen && (
+          {!reviewed && feedbackOpen && (
             <FeedbackForm
               note={note}
               remember={remember}
@@ -478,8 +477,56 @@ function EmailCard({ item, settings, drafting, onDraft }: EmailCardProps) {
               onCancel={() => setFeedbackOpen(false)}
             />
           )}
-        </>
+        </div>
+      </div>
+
+      {!reviewed && (
+        <DraftActions
+          drafted={!!email.drafted_at}
+          drafting={drafting}
+          pending={review.isPending}
+          canApprove={canApprove}
+          onDraft={() => onDraft(email.id)}
+          onToggleFeedback={() => setFeedbackOpen((v) => !v)}
+          onApprove={() => handleReview('approve')}
+          onSkip={() => handleReview('skip')}
+        />
       )}
+    </div>
+  )
+}
+
+interface EmailListProps {
+  items: RunEmail[]
+  selectedId: string | undefined
+  draftingIds: Set<string>
+  onSelect: (emailId: string) => void
+}
+
+// Every email in the run at a glance; the chosen one opens beside it
+function EmailList({ items, selectedId, draftingIds, onSelect }: EmailListProps) {
+  return (
+    <div className="divide-y rounded-md border lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+      {items.map(({ email, lead }) => (
+        <button
+          key={email.id}
+          type="button"
+          aria-current={email.id === selectedId}
+          onClick={() => onSelect(email.id)}
+          className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${
+            email.id === selectedId ? 'bg-muted font-medium' : 'hover:bg-muted/50'
+          }`}
+        >
+          <span className="min-w-0 truncate">{lead.company_name || lead.contact_name}</span>
+          {draftingIds.has(email.id) ? (
+            <Loader2 className="h-3 w-3 flex-shrink-0 animate-spin" />
+          ) : email.status === 'draft' && !email.drafted_at ? (
+            <span className="flex-shrink-0 text-xs font-normal text-muted-foreground">Not drafted</span>
+          ) : (
+            <StatusBadge status={email.status} />
+          )}
+        </button>
+      ))}
     </div>
   )
 }
@@ -490,6 +537,8 @@ export function WriteStep({ runId }: { runId: string }) {
   const queryClient = useQueryClient()
   const [draftingIds, setDraftingIds] = useState<Set<string>>(new Set())
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
+  // Null follows the first email still to review, so approving moves you on
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const stopRef = useRef(false)
 
   const items = runEmails.data ?? []
@@ -565,46 +614,60 @@ export function WriteStep({ runId }: { runId: string }) {
     return <p className="py-8 text-center text-sm text-muted-foreground">No emails to write in this run.</p>
   }
 
+  const selected =
+    items.find((i) => i.email.id === selectedId) ?? items.find((i) => i.email.status === 'draft') ?? items[0]
+
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-        <span>
-          {toReview} to review · {approved} approved · {skipped} skipped
-          {sent > 0 && ` · ${sent} queued or sent`}
-        </span>
-        {batch ? (
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Drafting {batch.done} of {batch.total}
-            <Button size="sm" variant="ghost" onClick={() => (stopRef.current = true)}>
-              Stop
-            </Button>
-          </div>
-        ) : (
-          undrafted.length > 0 && (
-            <Button size="sm" onClick={handleDraftAll}>
-              <Sparkles className="mr-1 h-3 w-3" />
-              Draft {undrafted.length} with Claude
-            </Button>
-          )
-        )}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Claude writes the subject and opening line from each site check; the rest is
-        your template. Approved emails are queued below and go out from your mailbox.
-      </p>
-      <CopyRulesPanel />
+    <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
       <SendPanel runId={runId} items={items} settings={settings} />
-      <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
-        {items.map((item) => (
-          <EmailCard
-            key={`${item.email.id}:${item.email.drafted_at}:${item.email.status}`}
-            item={item}
-            settings={settings}
-            drafting={draftingIds.has(item.email.id)}
-            onDraft={draftOne}
-          />
-        ))}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="flex flex-col gap-3 lg:min-h-0">
+          <div className="space-y-2 text-sm">
+            <p>
+              {toReview} to review · {approved} approved · {skipped} skipped
+              {sent > 0 && ` · ${sent} queued or sent`}
+            </p>
+            {batch ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Drafting {batch.done} of {batch.total}
+                <Button size="sm" variant="ghost" onClick={() => (stopRef.current = true)}>
+                  Stop
+                </Button>
+              </div>
+            ) : (
+              undrafted.length > 0 && (
+                <Button size="sm" onClick={handleDraftAll}>
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  Draft {undrafted.length} with Claude
+                </Button>
+              )
+            )}
+          </div>
+          <EmailList items={items} selectedId={selected.email.id} draftingIds={draftingIds} onSelect={setSelectedId} />
+          <CopyRulesPanel />
+          <p className="text-xs text-muted-foreground">
+            Claude writes the subject and opening line from each site check; the rest is your template.
+          </p>
+        </div>
+
+        <div className="rounded-md border p-3 lg:min-h-0 lg:overflow-y-auto">
+          {/* All stay mounted, so edits survive moving to another email */}
+          {items.map((item) => (
+            <div
+              key={`${item.email.id}:${item.email.drafted_at}:${item.email.status}`}
+              className={item === selected ? '' : 'hidden'}
+            >
+              <EmailCard
+                item={item}
+                settings={settings}
+                drafting={draftingIds.has(item.email.id)}
+                onDraft={draftOne}
+                onDecided={() => setSelectedId(null)}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

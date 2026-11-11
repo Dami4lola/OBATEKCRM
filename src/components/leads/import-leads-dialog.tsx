@@ -25,7 +25,9 @@ import { ImportPreviewTable } from './import-preview-table'
 import { parseFile } from '@/lib/import/parsers'
 import { autoMapColumns, applyMapping } from '@/lib/import/column-mapper'
 import { validateImportRow } from '@/lib/validations/import'
-import { useBulkCreateLeads } from '@/lib/queries/leads'
+import { fetchLeadKeys, useBulkCreateLeads } from '@/lib/queries/leads'
+import { markDuplicates } from '@/lib/import/duplicates'
+import { contactNameFor, MIN_CONTACT_FIELDS } from '@/lib/import/contact-rule'
 import { useStages } from '@/lib/queries/stages'
 import { EMAIL_SOURCES } from '@/lib/validations/lead'
 import type { ParseResult, ColumnMapping, ParsedRow, LeadImportFields } from '@/lib/import/types'
@@ -69,12 +71,12 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
     }
   }, [])
 
-  const handleMappingConfirm = useCallback(() => {
+  const handleMappingConfirm = useCallback(async () => {
     if (!parseResult) return
 
-    const hasContactName = mappings.some(m => m.targetField === 'contact_name')
-    if (!hasContactName) {
-      toast.error('Please map a column to Contact Name')
+    const mapped = ['contact_name', 'email', 'company_name'].filter(field => mappings.some(m => m.targetField === field))
+    if (mapped.length < MIN_CONTACT_FIELDS) {
+      toast.error('Map columns to at least two of Contact Name, Email and Company')
       return
     }
 
@@ -90,8 +92,17 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
       }
     })
 
-    setValidatedRows(validated)
-    setStep('preview')
+    // Rows that repeat a lead you have, or an earlier row, are marked and left out
+    setIsLoading(true)
+    try {
+      setValidatedRows(markDuplicates(validated, await fetchLeadKeys()))
+      setStep('preview')
+    } catch (error) {
+      toast.error('Could not check for duplicates, so nothing was imported')
+      console.error('Duplicate check error:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }, [parseResult, mappings])
 
   const handleImport = useCallback(async () => {
@@ -100,12 +111,23 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
       return
     }
 
-    const validLeads = validatedRows
-      .filter(row => row.isValid)
+    // Checked again now: leads may have been added since the preview
+    let checked: ParsedRow[]
+    try {
+      checked = markDuplicates(validatedRows, await fetchLeadKeys())
+    } catch (error) {
+      toast.error('Could not check for duplicates, so nothing was imported')
+      console.error('Duplicate check error:', error)
+      return
+    }
+    const skipped = checked.filter(row => row.duplicate).length
+
+    const validLeads = checked
+      .filter(row => row.isValid && !row.duplicate)
       .map(row => {
         const data = row.data as Partial<LeadImportFields>
         return {
-          contact_name: String(data.contact_name),
+          contact_name: contactNameFor(data),
           company_name: data.company_name ?? null,
           email: data.email ?? null,
           phone: data.phone ?? null,
@@ -125,13 +147,17 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
       })
 
     if (validLeads.length === 0) {
-      toast.error('No valid leads to import')
+      setValidatedRows(checked)
+      toast.error(skipped > 0 ? `Nothing to import: all ${skipped} were duplicates` : 'No valid leads to import')
       return
     }
 
     try {
       await bulkCreate.mutateAsync({ stageId: selectedStageId, leads: validLeads })
-      toast.success(`Successfully imported ${validLeads.length} leads`)
+      toast.success(
+        `Imported ${validLeads.length} lead${validLeads.length === 1 ? '' : 's'}` +
+          (skipped > 0 ? `, skipped ${skipped} duplicate${skipped === 1 ? '' : 's'}` : '')
+      )
       handleClose()
     } catch (error) {
       toast.error('Failed to import leads')
@@ -159,7 +185,7 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
     }
   }, [step])
 
-  const validCount = validatedRows.filter(r => r.isValid).length
+  const validCount = validatedRows.filter(r => r.isValid && !r.duplicate).length
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -242,8 +268,15 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
             </Button>
           )}
           {step === 'map' && (
-            <Button onClick={handleMappingConfirm}>
-              Continue
+            <Button onClick={handleMappingConfirm} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Checking for duplicates...
+                </>
+              ) : (
+                'Continue'
+              )}
             </Button>
           )}
           {step === 'preview' && (

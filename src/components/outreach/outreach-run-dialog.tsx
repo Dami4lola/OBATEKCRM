@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
   useCreateOutreachRun,
@@ -29,6 +30,14 @@ import { WriteStep } from './write-step'
 type Step = 'gather' | 'when' | 'write'
 
 const DATETIME_LOCAL = "yyyy-MM-dd'T'HH:mm"
+
+// Big enough that most runs need no scrolling. Write keeps a fixed height, so
+// the pop-up doesn't jump between emails.
+const DIALOG_SIZES: Record<Step, string> = {
+  gather: 'sm:max-w-[75rem]',
+  when: 'sm:max-w-2xl',
+  write: 'sm:max-w-[75rem] lg:h-[min(calc(100vh-2rem),60rem)]',
+}
 
 function isDefaultSelected(row: GatherRow) {
   return !row.blocked && !row.belowThreshold
@@ -148,9 +157,14 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={`${step === 'write' ? 'sm:max-w-3xl' : 'sm:max-w-2xl'} max-h-[90vh] overflow-y-auto`}>
+      <DialogContent
+        className={cn(
+          'flex max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-y-auto p-5 lg:overflow-hidden',
+          DIALOG_SIZES[step]
+        )}
+      >
         <DialogHeader>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <DialogTitle>
               {step === 'gather' && 'Run outreach'}
               {step === 'when' && 'When should it run?'}
@@ -158,6 +172,11 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
             </DialogTitle>
             {gather.data && (
               <Badge variant="outline">{gather.data.settings.mode} mode</Badge>
+            )}
+            {step === 'write' && (
+              <Button size="sm" className="mr-8 ml-auto" onClick={() => handleOpenChange(false)}>
+                Done for now
+              </Button>
             )}
           </div>
           {step === 'gather' && (
@@ -169,39 +188,43 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
           )}
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="flex shrink-0 flex-col lg:min-h-0 lg:flex-1 lg:shrink">
           {step === 'gather' && (
-            <>
-              {gather.isLoading && (
-                <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Gathering leads...
-                </div>
-              )}
-              {gather.error && (
-                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  {gather.error.message}
-                </div>
-              )}
-              {gather.data && (
-                <GatherStep
-                  rows={rows}
-                  settings={gather.data.settings}
-                  stageName={stageName}
-                  selectedIds={selectedIds}
-                  onToggle={handleToggle}
-                  onToggleAll={handleToggleAll}
+            <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
+              <div className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
+                {gather.isLoading && (
+                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Gathering leads...
+                  </div>
+                )}
+                {gather.error && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {gather.error.message}
+                  </div>
+                )}
+                {gather.data && (
+                  <GatherStep
+                    rows={rows}
+                    settings={gather.data.settings}
+                    stageName={stageName}
+                    selectedIds={selectedIds}
+                    onToggle={handleToggle}
+                    onToggleAll={handleToggleAll}
+                  />
+                )}
+              </div>
+              <div className="space-y-4 empty:hidden lg:w-96 lg:shrink-0 lg:overflow-y-auto">
+                <ActiveRuns
+                  onReview={(id) => {
+                    setRunId(id)
+                    setStep('write')
+                  }}
                 />
-              )}
-              <ActiveRuns
-                onReview={(id) => {
-                  setRunId(id)
-                  setStep('write')
-                }}
-              />
-              <RecentReplies />
-              <SeedChecks />
-            </>
+                <RecentReplies />
+                <SeedChecks />
+              </div>
+            </div>
           )}
 
           {step === 'when' && (
@@ -219,38 +242,37 @@ export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps
           {step === 'write' && runId && <WriteStep runId={runId} />}
         </div>
 
-        <DialogFooter>
-          {step === 'gather' && (
-            <>
-              <Button variant="outline" onClick={() => handleOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button onClick={() => setStep('when')} disabled={!gather.data}>
-                Next
-              </Button>
-            </>
-          )}
-          {step === 'when' && (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setStep('gather')}
-                disabled={createRun.isPending}
-              >
-                Back
-              </Button>
-              <Button onClick={handleSubmit} disabled={submitDisabled}>
-                {createRun.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {timing === 'now' ? 'Start run' : 'Schedule run'}
-              </Button>
-            </>
-          )}
-          {step === 'write' && (
-            <Button onClick={() => handleOpenChange(false)}>Done for now</Button>
-          )}
-        </DialogFooter>
+        {step !== 'write' && (
+          <DialogFooter>
+            {step === 'gather' && (
+              <>
+                <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={() => setStep('when')} disabled={!gather.data}>
+                  Next
+                </Button>
+              </>
+            )}
+            {step === 'when' && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setStep('gather')}
+                  disabled={createRun.isPending}
+                >
+                  Back
+                </Button>
+                <Button onClick={handleSubmit} disabled={submitDisabled}>
+                  {createRun.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {timing === 'now' ? 'Start run' : 'Schedule run'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

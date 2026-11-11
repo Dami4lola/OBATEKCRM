@@ -1,7 +1,8 @@
 'use client'
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Copy } from 'lucide-react'
+import { DUPLICATE_REASONS } from '@/lib/import/duplicates'
 import type { ParsedRow, ColumnMapping } from '@/lib/import/types'
 
 interface ImportPreviewTableProps {
@@ -13,7 +14,8 @@ interface ImportPreviewTableProps {
 export function ImportPreviewTable({ rows, mappings, maxRows = 10 }: ImportPreviewTableProps) {
   const activeMappings = mappings.filter(m => m.targetField)
   const displayRows = rows.slice(0, maxRows)
-  const validCount = rows.filter(r => r.isValid).length
+  const validCount = rows.filter(r => r.isValid && !r.duplicate).length
+  const duplicateCount = rows.filter(r => r.duplicate).length
   const invalidCount = rows.filter(r => !r.isValid).length
 
   return (
@@ -27,6 +29,12 @@ export function ImportPreviewTable({ rows, mappings, maxRows = 10 }: ImportPrevi
             <CheckCircle2 className="h-4 w-4" />
             {validCount} valid
           </span>
+          {duplicateCount > 0 && (
+            <span className="flex items-center gap-1 text-amber-600">
+              <Copy className="h-4 w-4" />
+              {duplicateCount} duplicate{duplicateCount !== 1 ? 's' : ''}
+            </span>
+          )}
           {invalidCount > 0 && (
             <span className="flex items-center gap-1 text-destructive">
               <AlertCircle className="h-4 w-4" />
@@ -57,9 +65,19 @@ export function ImportPreviewTable({ rows, mappings, maxRows = 10 }: ImportPrevi
               </TableRow>
             ) : (
               displayRows.map((row) => (
-                <TableRow key={row.rowIndex} className={!row.isValid ? 'bg-destructive/10' : ''}>
+                <TableRow
+                  key={row.rowIndex}
+                  className={!row.isValid ? 'bg-destructive/10' : row.duplicate ? 'bg-amber-50' : ''}
+                >
                   <TableCell>
-                    {row.isValid ? (
+                    {row.isValid && row.duplicate ? (
+                      <div className="group relative">
+                        <Copy className="h-4 w-4 text-amber-600" />
+                        <div className="absolute left-6 top-0 z-10 hidden group-hover:block bg-popover border rounded-md p-2 text-xs shadow-lg max-w-64 whitespace-nowrap">
+                          <p>{DUPLICATE_REASONS[row.duplicate]}</p>
+                        </div>
+                      </div>
+                    ) : row.isValid ? (
                       <CheckCircle2 className="h-4 w-4 text-green-600" />
                     ) : (
                       <div className="group relative">
@@ -86,9 +104,13 @@ export function ImportPreviewTable({ rows, mappings, maxRows = 10 }: ImportPrevi
         </Table>
       </div>
 
-      {invalidCount > 0 && (
+      {(invalidCount > 0 || duplicateCount > 0) && (
         <div className="text-sm text-muted-foreground">
-          Invalid rows will be skipped during import.
+          {invalidCount > 0 && duplicateCount > 0
+            ? 'Invalid rows and duplicates will be skipped during import.'
+            : invalidCount > 0
+              ? 'Invalid rows will be skipped during import.'
+              : 'Duplicates will be skipped during import.'}
         </div>
       )}
     </div>

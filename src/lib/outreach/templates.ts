@@ -77,6 +77,12 @@ function fill(text: string, vars: TemplateVars): string {
     .trim()
 }
 
+// Lets an email be approved without a Claude draft: every email needs a
+// subject, and this one stays editable
+export function defaultSubject(lead: Pick<Lead, 'company_name'>): string {
+  return `question about ${lead.company_name?.trim() || 'your business'}`
+}
+
 export function renderSteps(template: TemplateStep[], vars: TemplateVars): OutreachEmailStep[] {
   return template.map((step) => ({
     step: step.step,

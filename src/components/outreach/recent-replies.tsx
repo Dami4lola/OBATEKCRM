@@ -48,8 +48,8 @@ export function RecentReplies() {
       <h4 className="text-sm font-medium">Recent replies</h4>
       <div className="divide-y rounded-md border">
         {items.map(({ email, company, address }) => (
-          <div key={email.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-            <span className="truncate">{company}</span>
+          <div key={email.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 py-2 text-sm">
+            <span className="max-w-full truncate">{company}</span>
             <div className="flex shrink-0 items-center gap-2">
               <Badge variant="outline" className={email.reply_class ? CLASS_STYLES[email.reply_class] : ''}>
                 {email.reply_class ? REPLY_CLASS_LABELS[email.reply_class] : 'Not labelled yet'}

@@ -4,10 +4,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import { ArrowRight } from 'lucide-react'
 import type { ColumnMapping, LeadImportFields } from '@/lib/import/types'
+import { MIN_CONTACT_FIELDS } from '@/lib/import/contact-rule'
 
 const TARGET_FIELDS: { value: keyof LeadImportFields | 'skip'; label: string }[] = [
   { value: 'skip', label: 'Skip this column' },
-  { value: 'contact_name', label: 'Contact Name (required)' },
+  { value: 'contact_name', label: 'Contact Name' },
   { value: 'company_name', label: 'Company Name' },
   { value: 'email', label: 'Email' },
   { value: 'phone', label: 'Phone' },
@@ -39,18 +40,19 @@ export function ImportColumnMapper({ mappings, onMappingChange }: ImportColumnMa
     onMappingChange(newMappings)
   }
 
-  const hasContactName = mappings.some(m => m.targetField === 'contact_name')
+  const mappedFields = ['contact_name', 'email', 'company_name'].filter(field => mappings.some(m => m.targetField === field))
+  const hasEnough = mappedFields.length >= MIN_CONTACT_FIELDS
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Map your file columns to lead fields. At minimum, <strong>Contact Name</strong> is required.
+        Map your file columns to lead fields. Each lead needs at least two of <strong>Contact Name</strong>, <strong>Email</strong> and <strong>Company</strong>; rows with fewer are skipped.
         Map both First Name and Last Name to Contact Name to join them.
       </p>
 
-      {!hasContactName && (
+      {!hasEnough && (
         <div className="p-3 text-sm text-amber-700 bg-amber-50 dark:bg-amber-950 dark:text-amber-300 rounded-md">
-          Please map at least one column to Contact Name
+          Map columns to at least two of Contact Name, Email and Company
         </div>
       )}
 

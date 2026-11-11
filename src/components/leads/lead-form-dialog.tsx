@@ -13,6 +13,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -29,11 +30,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useCreateLead } from '@/lib/queries/leads'
-import {
-  leadSchema,
-  leadFormToRow,
-  type LeadFormData,
-} from '@/lib/validations/lead'
+import type { LeadFormData } from '@/lib/validations/lead'
+import { newLeadSchema, newLeadToRow } from '@/lib/validations/new-lead'
 import { LeadOutreachFields } from './lead-outreach-fields'
 
 interface LeadFormDialogProps {
@@ -50,7 +48,7 @@ export function LeadFormDialog({
   const createLead = useCreateLead()
 
   const form = useForm<LeadFormData>({
-    resolver: zodResolver(leadSchema),
+    resolver: zodResolver(newLeadSchema),
     defaultValues: {
       contact_name: '',
       company_name: '',
@@ -81,7 +79,7 @@ export function LeadFormDialog({
 
   const onSubmit = async (data: LeadFormData) => {
     try {
-      await createLead.mutateAsync(leadFormToRow(data))
+      await createLead.mutateAsync(newLeadToRow(data))
       toast.success('Lead created successfully')
       form.reset()
       onOpenChange(false)
@@ -104,10 +102,13 @@ export function LeadFormDialog({
               name="contact_name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Contact Name *</FormLabel>
+                  <FormLabel>Contact Name</FormLabel>
                   <FormControl>
                     <Input placeholder="John Doe" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    Each lead needs at least two of: contact name, email, company.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

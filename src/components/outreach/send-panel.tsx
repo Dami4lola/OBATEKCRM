@@ -147,13 +147,24 @@ export function SendPanel({ runId, items, settings }: SendPanelProps) {
         </p>
       )}
 
-      {!settings.sending_paused && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm">
-            {approved.length} approved
-            {queued > 0 && ` · ${queued} queued`}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1 basis-96 space-y-0.5">
+          {!settings.sending_paused && (
+            <p className="text-sm">
+              {approved.length} approved
+              {queued > 0 && ` · ${queued} queued`}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            The scheduler sends {settings.sends_per_tick} every 5 minutes, {weekdays_only ? 'weekdays ' : ''}
+            {start}–{end} ({settings.send_timezone.replace(/^.*\//, '').replace(/_/g, ' ')} time), up to {cap} a day
+            {week ? ` (warm-up week ${week})` : ' (warm-up starts with the first send)'}. Follow-ups count toward
+            that, so expect about {Math.max(1, Math.floor(cap / 3))} new leads a day once sequences are running.
           </p>
-          {queueing ? (
+        </div>
+
+        {!settings.sending_paused &&
+          (queueing ? (
             <div className="flex items-center gap-2 text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
               Queueing {progress.done} of {progress.total}
@@ -163,7 +174,7 @@ export function SendPanel({ runId, items, settings }: SendPanelProps) {
             </div>
           ) : (
             approved.length > 0 && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={handleTest} disabled={testing || mailbox?.status !== 'connected'}>
                   {testing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <MailCheck className="mr-1 h-3 w-3" />}
                   Send test to me
@@ -174,16 +185,8 @@ export function SendPanel({ runId, items, settings }: SendPanelProps) {
                 </Button>
               </div>
             )
-          )}
-        </div>
-      )}
-
-      <p className="text-xs text-muted-foreground">
-        The scheduler sends {settings.sends_per_tick} every 5 minutes, {weekdays_only ? 'weekdays ' : ''}
-        {start}–{end} ({settings.send_timezone.replace(/^.*\//, '').replace(/_/g, ' ')} time), up to {cap} a day
-        {week ? ` (warm-up week ${week})` : ' (warm-up starts with the first send)'}. Follow-ups count toward
-        that, so expect about {Math.max(1, Math.floor(cap / 3))} new leads a day once sequences are running.
-      </p>
+          ))}
+      </div>
 
       {problems.length > 0 && (
         <ul className="space-y-0.5 text-xs text-destructive">

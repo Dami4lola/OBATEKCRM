@@ -50,15 +50,15 @@ export function ActiveRuns({ onReview }: { onReview?: (runId: string) => void })
       <div className="rounded-md border divide-y">
         {runs.map((run) => (
           <div key={run.id} className="flex items-center justify-between gap-2 px-3 py-2">
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               <Badge variant={run.status === 'scheduled' ? 'outline' : 'secondary'}>
                 {STATUS_LABELS[run.status]}
               </Badge>
               {isSignalRun(run) && <span className="font-medium">Buying signals</span>}
-              <span>{format(new Date(run.scheduled_for), 'PPp')}</span>
+              <span className="whitespace-nowrap">{format(new Date(run.scheduled_for), 'MMM d, h:mm a')}</span>
               <span className="text-xs text-muted-foreground">{run.mode}</span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
             {onReview && REVIEWABLE.includes(run.status) && (
               <Button
                 variant="outline"

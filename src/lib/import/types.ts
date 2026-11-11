@@ -3,6 +3,8 @@ export interface ParsedRow {
   data: Record<string, string | number | null>
   errors: string[]
   isValid: boolean
+  // Left out of the import: already a lead, or repeated earlier in the file
+  duplicate?: 'existing' | 'file'
 }
 
 export interface ParseResult {

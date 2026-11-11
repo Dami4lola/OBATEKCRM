@@ -70,6 +70,8 @@ A **Find leads** dialog has inputs for vertical, city and max results. It pulls 
 
 - **Fields used:** `id` (place_id), display name, formatted address and address components (city, region, country), phone, `websiteUri`, rating and review count. Request only the fields used (field mask), because cost depends on the fields.
 - **Dedupe** through the adapter's `fetchExistingContacts()` before insert: match on `google_place_id`, then website domain, then phone digits. This also covers businesses deleted with Clean up (`dismissed_leads`).
+- **New leads need two of three:** a contact name, an email and a company, at least two. This applies to the CSV import and the Add Lead form, not to Find leads, State lists or Software users, and not to editing a lead you already have. A name that is only the company name repeated doesn't count as a name. With an email and a company but no person, the company is stored as the contact name, as for Google leads (`src/lib/import/contact-rule.ts`, `src/lib/validations/new-lead.ts`).
+- **CSV import** (Contacts → Import) skips duplicates before inserting, by **email**, or by **name and company together** (case, spacing, punctuation and suffixes like Inc. ignored; name alone or company alone never matches). It compares against every lead in every stage and against earlier rows in the same file, then re-checks when you press Import. Skipped rows are counted in the preview and the success message. `dismissed_leads` isn't compared, since it keeps no email or name, so a lead removed with Clean up can come back through an import (`src/lib/import/duplicates.ts`).
 - **Clean up** (dashboard header) deletes checked leads in New that score below a cutoff (default: the outreach threshold). Leads with calls, meetings, sent emails or open tasks are never offered, because deleting a lead cascades to all of them. Each deleted business's place id, website host and phone are kept in `dismissed_leads` (`006_dismissed_leads.sql`), so it isn't sourced again.
 - Clean up also offers leads whose **only** known email (on the lead or found by the site check) is a shared inbox (`info@`, `office@`, `contact@`…, list in `src/lib/outreach/cleanup.ts`), but **only for companies over `small_business_max_staff` (50)**, and not if they score at least `generic_email_keep_score` (7). At a small company, info@ usually reaches the owner. The site check saves a person's address ahead of a shared inbox when a site shows both.
 - **Company size** (`src/lib/outreach/company-size.ts`, first match wins):
@@ -225,7 +227,7 @@ The same audit data later produces the **free ops audit PDF** (Week 4), which is
 - A badge on the button counts active runs. It will also show "ready for review" when a manual-mode scheduled run is waiting.
 
 ### Step 1: Gather (built)
-- Lists every lead in New, all ticked except blocked and below-threshold leads.
+- Lists every lead in New, all ticked except blocked and below-threshold leads. Blocked leads sit behind a toggle, and runs, replies and seed checks sit beside the list, so most runs fit on one screen with no scrolling.
 - Each row shows company, contact, email, city and vertical, plus warnings and, from stage 3, the score.
 - Leads with a **blocking** warning are unticked and locked (§7).
 
@@ -234,11 +236,13 @@ The same audit data later produces the **free ops audit PDF** (Week 4), which is
 - A scheduled run saves `outreach_runs` with `status='scheduled'`. It re-gathers New when it fires.
 
 ### Step 3: Write (manual mode only)
-- One card per lead:
+- Every email in a list on the left; the chosen one opens in full beside it. Edits survive moving between emails, and Approve or Skip moves on to the next one to review.
+- Each email shows:
   - The audit hook in plain English (e.g. "Requests go to an inbox; no instant booking").
   - The **subject** and **opener** Claude drafted (§8), shown inside the rendered email 1 from the template.
   - Emails 2–3 collapsed.
 - You can edit the opener, the subject, or the whole email. **Approve** or **Skip** per lead.
+- **Approve** only needs a subject, so a Claude draft is optional: an undrafted email starts with the subject `question about {company}` and no opener.
 - `author` is recorded as `human` (written from blank), `claude` (accepted unchanged) or `claude_edited`.
 - A scheduled run in manual mode does the audit and drafts, then sets `status='awaiting_review'` and waits here.
 

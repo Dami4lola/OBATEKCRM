@@ -26,7 +26,7 @@ export function SeedChecks() {
       <h4 className="text-sm font-medium">Where did the seed copies land?</h4>
       <div className="divide-y rounded-md border">
         {checks.map((check) => (
-          <div key={check.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+          <div key={check.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 py-1.5 text-sm">
             <span className="truncate">
               {check.to_address}
               <span className="text-xs text-muted-foreground"> · {format(new Date(check.sent_at), 'EEE MMM d, h:mm a')}</span>
