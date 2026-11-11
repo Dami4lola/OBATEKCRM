@@ -8,6 +8,8 @@ import { useLeads, useMoveLead } from '@/lib/queries/leads'
 import { StageColumn } from './stage-column'
 import { LeadFormDialog } from '@/components/leads/lead-form-dialog'
 import { LeadSheet } from '@/components/leads/lead-sheet'
+import { useRunOutreach } from '@/components/outreach/run-outreach-provider'
+import { useOutreachSettings } from '@/lib/queries/outreach'
 import type { Lead } from '@/types/database'
 
 const DEFAULT_PIPELINE_ID = '00000000-0000-0000-0000-000000000001'
@@ -21,6 +23,9 @@ export function PipelineBoard() {
   const { data: stages = [], isLoading: stagesLoading } = useStages(DEFAULT_PIPELINE_ID)
   const { data: leads = [], isLoading: leadsLoading } = useLeads()
   const moveLead = useMoveLead()
+  const { openRunOutreach } = useRunOutreach()
+  const { data: outreachSettings } = useOutreachSettings()
+  const outreachStageName = outreachSettings?.source_stage_name.toLowerCase()
 
   // Group leads by stage
   const leadsByStage = useMemo(() => {
@@ -87,6 +92,12 @@ export function PipelineBoard() {
               leads={leadsByStage[stage.id] || []}
               onAddLead={handleAddLead}
               onLeadClick={handleLeadClick}
+              onRunOutreach={
+                stage.name.toLowerCase() === outreachStageName
+                  ? openRunOutreach
+                  : undefined
+              }
+              outreachSettings={outreachSettings}
             />
           ))}
         </div>

@@ -1,0 +1,344 @@
+'use client'
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { createClient } from '@/lib/supabase/client'
+import {
+  parseOutreachSettings,
+  type OutreachSettings,
+} from '@/lib/outreach/settings'
+import { cancelRun } from '@/lib/outreach/adapters/obatek-crm'
+import { gatherLeads, runEmailRows, type GatherRow } from '@/lib/outreach/gather'
+import type {
+  Lead,
+  OutreachMode,
+  OutreachRun,
+  OutreachRunStatus,
+  Stage,
+} from '@/types/database'
+import type { LicenseImportResult, LicenseState } from '@/lib/outreach/license-lists'
+import type { SoftwareSearchResult } from '@/lib/outreach/tech-leads'
+import type { SourceLeadsResult } from '@/lib/outreach/sourcing'
+import type { AuditLeadResult } from '@/lib/outreach/audit-findings'
+
+export const ACTIVE_RUN_STATUSES: OutreachRunStatus[] = [
+  'scheduled',
+  'preparing',
+  'awaiting_review',
+  'sending',
+]
+
+export type { GatherRow }
+
+export interface GatherResult {
+  stage: Stage
+  rows: GatherRow[]
+  settings: OutreachSettings
+}
+
+type Supabase = ReturnType<typeof createClient>
+
+async function fetchSettings(supabase: Supabase): Promise<OutreachSettings> {
+  const { data, error } = await supabase.from('outreach_settings').select('*')
+  if (error) throw error
+  return parseOutreachSettings(data || [])
+}
+
+export function useOutreachSettings() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'settings'],
+    queryFn: () => fetchSettings(supabase),
+  })
+}
+
+// Every lead in the source stage, with compliance warnings for this run
+export function useOutreachGather(enabled: boolean) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'gather'],
+    enabled,
+    // Fresh every time the pop-up opens: the scheduler changes runs too
+    staleTime: 0,
+    queryFn: async (): Promise<GatherResult> => {
+      const settings = await fetchSettings(supabase)
+      const { stage, rows } = await gatherLeads(supabase, settings)
+      return { stage, rows, settings }
+    },
+  })
+}
+
+export function useActiveOutreachRuns() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'runs', 'active'],
+    // The scheduler starts and finishes runs without the page knowing
+    staleTime: 0,
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<OutreachRun[]> => {
+      const { data, error } = await supabase
+        .from('outreach_runs')
+        .select('*')
+        .in('status', ACTIVE_RUN_STATUSES)
+        .order('scheduled_for', { ascending: true })
+
+      if (error) throw error
+      return data || []
+    },
+  })
+}
+
+// Run now: the run starts preparing and gets a draft row per selected lead
+// (blocked leads are recorded too). Scheduled: only the run is saved; it
+// re-gathers when it fires and skips the leads that were unticked here.
+export function useCreateOutreachRun() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      rows,
+      selectedIds,
+      scheduledFor,
+      mode,
+    }: {
+      rows: GatherRow[]
+      selectedIds: Set<string>
+      scheduledFor: Date | null
+      mode: OutreachMode
+    }): Promise<OutreachRun> => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const now = new Date().toISOString()
+
+      if (scheduledFor) {
+        const excluded = rows
+          .filter((row) => !row.blocked && !selectedIds.has(row.lead.id))
+          .map((row) => row.lead.id)
+
+        const { data, error } = await supabase
+          .from('outreach_runs')
+          .insert({
+            status: 'scheduled',
+            mode,
+            scheduled_for: scheduledFor.toISOString(),
+            created_by: user?.id ?? null,
+            summary: { excluded_lead_ids: excluded },
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+        return data
+      }
+
+      const { data: run, error: runError } = await supabase
+        .from('outreach_runs')
+        .insert({
+          status: 'preparing',
+          mode,
+          scheduled_for: now,
+          started_at: now,
+          created_by: user?.id ?? null,
+        })
+        .select()
+        .single()
+
+      if (runError) throw runError
+
+      const emails = runEmailRows(run.id, rows, (row) => selectedIds.has(row.lead.id))
+
+      if (emails.length > 0) {
+        const { error: emailsError } = await supabase
+          .from('outreach_emails')
+          .insert(emails)
+
+        if (emailsError) {
+          // Don't leave a run behind with no leads attached
+          await supabase.from('outreach_runs').delete().eq('id', run.id)
+          throw emailsError
+        }
+      }
+
+      return run
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+export function useCancelOutreachRun() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => cancelRun(supabase, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+export interface SourceLeadsInput {
+  query: string
+  vertical: string
+  city: string
+  region?: string
+  country: string
+  maxResults: number
+}
+
+// Runs on the server (/api/outreach/source): Places search, dedupe, insert
+export function useSourceLeads() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: SourceLeadsInput): Promise<SourceLeadsResult> => {
+      const response = await fetch('/api/outreach/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Failed to find leads')
+      return body as SourceLeadsResult
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+export interface LicenseImportInput {
+  state: LicenseState
+  counties: string[]
+  limit: number
+  newFirst: boolean
+}
+
+// Find leads → State lists: licensed brokerages from a state's open data
+export function useImportLicenses() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: LicenseImportInput): Promise<LicenseImportResult> => {
+      const response = await fetch('/api/outreach/licenses/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Failed to import the licence list')
+      return body as LicenseImportResult
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+    },
+  })
+}
+
+// Find leads → Software users: companies using GoHighLevel or property
+// management software (3 TheirStack credits each)
+export function useSoftwareSearch() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { slugs: string[]; states: string[]; limit: number }): Promise<SoftwareSearchResult> => {
+      const response = await fetch('/api/outreach/software/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Failed to search for software users')
+      return body as SoftwareSearchResult
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['signals'] })
+    },
+  })
+}
+
+export async function requestLeadAudit(input: {
+  leadId: string
+  checkReviews: boolean
+  lookupListing: boolean
+  force?: boolean
+}): Promise<AuditLeadResult> {
+  const response = await fetch('/api/outreach/audit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error || 'Failed to check the site')
+  return body as AuditLeadResult
+}
+
+// Re-check one lead from the lead sheet
+export function useAuditLead() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { leadId: string; checkReviews: boolean }) =>
+      requestLeadAudit({ ...input, lookupListing: true, force: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.invalidateQueries({ queryKey: ['outreach'] })
+      queryClient.invalidateQueries({ queryKey: ['calls'] })
+    },
+  })
+}
+
+// Never checked, checked too long ago, or no website and checked before the
+// Google lookup existed (so "no website" was never confirmed)
+function needsSiteCheck(lead: Lead, staleBefore: Date): boolean {
+  if (!lead.audited_at || new Date(lead.audited_at) < staleBefore) return true
+  const raw = lead.audit as Record<string, unknown> | null
+  return !lead.website && !lead.google_place_id && !raw?.website_status
+}
+
+// Leads in the source stage that need a site check
+export function useLeadsToCheck(enabled: boolean) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['outreach', 'to-check'],
+    enabled,
+    queryFn: async () => {
+      const settings = await fetchSettings(supabase)
+      const { data: stage, error: stageError } = await supabase
+        .from('stages')
+        .select('*')
+        .ilike('name', settings.source_stage_name)
+        .limit(1)
+        .maybeSingle()
+      if (stageError) throw stageError
+      if (!stage) throw new Error(`No pipeline stage named "${settings.source_stage_name}"`)
+
+      const staleBefore = new Date(Date.now() - settings.audit_max_age_days * 86_400_000)
+      const leads: Lead[] = []
+      const pageSize = 1000
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from('leads')
+          .select('*')
+          .eq('stage_id', stage.id)
+          .order('position_index', { ascending: true })
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        leads.push(...(data || []).filter((lead) => needsSiteCheck(lead, staleBefore)))
+        if (!data || data.length < pageSize) break
+      }
+
+      return { stage, leads, settings }
+    },
+  })
+}

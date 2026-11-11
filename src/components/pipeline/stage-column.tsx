@@ -1,9 +1,10 @@
 'use client'
 
 import { Droppable } from '@hello-pangea/dnd'
-import { Plus } from 'lucide-react'
+import { Plus, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LeadCard } from './lead-card'
+import type { OutreachSettings } from '@/lib/outreach/settings'
 import type { Stage, Lead } from '@/types/database'
 
 interface StageColumnProps {
@@ -11,6 +12,9 @@ interface StageColumnProps {
   leads: Lead[]
   onAddLead: (stageId: string) => void
   onLeadClick: (lead: Lead) => void
+  // Set on the stage outreach gathers from
+  onRunOutreach?: () => void
+  outreachSettings?: OutreachSettings
 }
 
 export function StageColumn({
@@ -18,6 +22,8 @@ export function StageColumn({
   leads,
   onAddLead,
   onLeadClick,
+  onRunOutreach,
+  outreachSettings,
 }: StageColumnProps) {
   const totalValue = leads.reduce(
     (sum, lead) => sum + (Number(lead.value) || 0),
@@ -38,14 +44,27 @@ export function StageColumn({
             {leads.length}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => onAddLead(stage.id)}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center">
+          {onRunOutreach && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onRunOutreach}
+              title="Run outreach on these leads"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onAddLead(stage.id)}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Value summary */}
@@ -73,6 +92,7 @@ export function StageColumn({
                 lead={lead}
                 index={index}
                 onClick={() => onLeadClick(lead)}
+                settings={outreachSettings}
               />
             ))}
             {provided.placeholder}

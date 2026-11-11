@@ -6,6 +6,58 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+// Outreach unions, shared across Row/Insert/Update below
+export type EmailSource = 'website' | 'lusha' | 'manual' | 'referral' | 'other'
+export type LeadSource =
+  | 'places'
+  | 'lusha'
+  | 'import'
+  | 'manual'
+  | 'referral'
+  | 'other'
+  | 'theirstack'
+  | 'state_license'
+  | 'state_filing'
+export type TaskKind = 'general' | 'call'
+export type OutreachRunStatus =
+  | 'scheduled'
+  | 'preparing'
+  | 'awaiting_review'
+  | 'sending'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+export type OutreachMode = 'manual' | 'auto'
+export type OutreachEmailStatus = 'blocked' | 'draft' | 'approved' | 'queued' | 'sent' | 'failed' | 'skipped'
+export type SequenceState = 'active' | 'finished' | 'stopped'
+export type OutreachMessageKind = 'outreach' | 'seed' | 'test'
+export type SeedPlacement = 'inbox' | 'promotions' | 'spam' | 'missing'
+export type MailboxStatus = 'connected' | 'needs_reconnect'
+export type OutreachHook =
+  | 'no_site'
+  | 'no_booking'
+  | 'request_only'
+  | 'not_mobile'
+  | 'slow'
+  | 'outdated'
+  | 'seo_local'
+  | 'generic'
+  | 'job_post'
+export type OutreachAuthor = 'human' | 'claude' | 'claude_edited'
+export type SignalSource = 'theirstack' | 'manual'
+export type SignalKind = 'job_post' | 'technology'
+export type SignalFit = 'pending' | 'fit' | 'not_fit'
+export type SignalTarget = 'agency' | 'trades' | 'dealer' | 'property' | 'other'
+export type SignalStatus = 'new' | 'lead_created' | 'matched_existing' | 'discarded'
+export type ReplyClass =
+  | 'interested'
+  | 'not_now'
+  | 'wrong_person'
+  | 'unsubscribe'
+  | 'out_of_office'
+  | 'other'
+export type SuppressionReason = 'unsubscribe' | 'hard_bounce' | 'spam_complaint' | 'manual'
+
 export interface Database {
   public: {
     Tables: {
@@ -93,6 +145,24 @@ export interface Database {
           value: number | null
           payment_terms: 'one_time' | 'monthly' | 'hourly' | null
           notes: string | null
+          job_title: string | null
+          website: string | null
+          city: string | null
+          region: string | null
+          country: string | null
+          vertical: string | null
+          staff_size: number | null
+          linkedin_url: string | null
+          email_source: EmailSource | null
+          lead_source: LeadSource | null
+          source_ref: string | null
+          google_place_id: string | null
+          google_rating: number | null
+          google_review_count: number | null
+          owner_name: string | null
+          signals: Json
+          audit: Json | null
+          audited_at: string | null
           position_index: number
           created_at: string
           updated_at: string
@@ -107,6 +177,24 @@ export interface Database {
           value?: number | null
           payment_terms?: 'one_time' | 'monthly' | 'hourly' | null
           notes?: string | null
+          job_title?: string | null
+          website?: string | null
+          city?: string | null
+          region?: string | null
+          country?: string | null
+          vertical?: string | null
+          staff_size?: number | null
+          linkedin_url?: string | null
+          email_source?: EmailSource | null
+          lead_source?: LeadSource | null
+          source_ref?: string | null
+          google_place_id?: string | null
+          google_rating?: number | null
+          google_review_count?: number | null
+          owner_name?: string | null
+          signals?: Json
+          audit?: Json | null
+          audited_at?: string | null
           position_index?: number
           created_at?: string
           updated_at?: string
@@ -121,6 +209,24 @@ export interface Database {
           value?: number | null
           payment_terms?: 'one_time' | 'monthly' | 'hourly' | null
           notes?: string | null
+          job_title?: string | null
+          website?: string | null
+          city?: string | null
+          region?: string | null
+          country?: string | null
+          vertical?: string | null
+          staff_size?: number | null
+          linkedin_url?: string | null
+          email_source?: EmailSource | null
+          lead_source?: LeadSource | null
+          source_ref?: string | null
+          google_place_id?: string | null
+          google_rating?: number | null
+          google_review_count?: number | null
+          owner_name?: string | null
+          signals?: Json
+          audit?: Json | null
+          audited_at?: string | null
           position_index?: number
           created_at?: string
           updated_at?: string
@@ -141,6 +247,7 @@ export interface Database {
           type: 'note' | 'call' | 'email' | 'meeting'
           title: string
           description: string | null
+          meta: Json
           created_at: string
         }
         Insert: {
@@ -149,6 +256,7 @@ export interface Database {
           type: 'note' | 'call' | 'email' | 'meeting'
           title: string
           description?: string | null
+          meta?: Json
           created_at?: string
         }
         Update: {
@@ -157,6 +265,7 @@ export interface Database {
           type?: 'note' | 'call' | 'email' | 'meeting'
           title?: string
           description?: string | null
+          meta?: Json
           created_at?: string
         }
         Relationships: [
@@ -226,6 +335,7 @@ export interface Database {
           due_date: string
           status: 'pending' | 'completed'
           completed_at: string | null
+          kind: TaskKind
           created_at: string
         }
         Insert: {
@@ -236,6 +346,7 @@ export interface Database {
           due_date: string
           status?: 'pending' | 'completed'
           completed_at?: string | null
+          kind?: TaskKind
           created_at?: string
         }
         Update: {
@@ -246,6 +357,7 @@ export interface Database {
           due_date?: string
           status?: 'pending' | 'completed'
           completed_at?: string | null
+          kind?: TaskKind
           created_at?: string
         }
         Relationships: [
@@ -257,94 +369,447 @@ export interface Database {
           }
         ]
       }
-      email_accounts: {
+      outreach_runs: {
         Row: {
           id: string
-          user_id: string
-          provider: 'outlook'
-          email_address: string
-          access_token: string
-          refresh_token: string
-          token_expires_at: string
+          status: OutreachRunStatus
+          mode: OutreachMode
+          scheduled_for: string
+          started_at: string | null
+          finished_at: string | null
+          created_by: string | null
+          summary: Json
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
-          user_id: string
-          provider: 'outlook'
-          email_address: string
-          access_token: string
-          refresh_token: string
-          token_expires_at: string
+          status?: OutreachRunStatus
+          mode?: OutreachMode
+          scheduled_for?: string
+          started_at?: string | null
+          finished_at?: string | null
+          created_by?: string | null
+          summary?: Json
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
-          user_id?: string
-          provider?: 'outlook'
-          email_address?: string
-          access_token?: string
-          refresh_token?: string
-          token_expires_at?: string
+          status?: OutreachRunStatus
+          mode?: OutreachMode
+          scheduled_for?: string
+          started_at?: string | null
+          finished_at?: string | null
+          created_by?: string | null
+          summary?: Json
           created_at?: string
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'email_accounts_user_id_fkey'
-            columns: ['user_id']
+            foreignKeyName: 'outreach_runs_created_by_fkey'
+            columns: ['created_by']
             referencedRelation: 'profiles'
             referencedColumns: ['id']
           }
         ]
       }
-      email_logs: {
+      outreach_emails: {
         Row: {
           id: string
-          email_account_id: string
           lead_id: string
-          subject: string
-          body: string
-          sent_at: string
-          status: 'sent' | 'failed' | 'bounced'
-          error_message: string | null
+          run_id: string | null
+          status: OutreachEmailStatus
+          blocked_reason: string | null
+          audit: Json
+          primary_hook: OutreachHook | null
+          steps: Json
+          opener: string | null
+          template_key: string | null
+          draft_steps: Json | null
+          drafted_at: string | null
+          last_error: string | null
+          author: OutreachAuthor | null
+          model: string | null
+          instantly_campaign_id: string | null
+          instantly_lead_id: string | null
+          approved_at: string | null
+          sent_at: string | null
+          opened_at: string | null
+          open_count: number
+          replied_at: string | null
+          reply_class: ReplyClass | null
+          bounced_at: string | null
+          unsubscribed_at: string | null
+          is_example: boolean
+          linkedin_draft: string | null
+          stats_synced_at: string | null
+          queued_at: string | null
+          sequence_state: SequenceState | null
+          next_step: number | null
+          next_step_at: string | null
+          stopped_reason: string | null
+          created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
-          email_account_id: string
           lead_id: string
-          subject: string
-          body: string
-          sent_at?: string
-          status?: 'sent' | 'failed' | 'bounced'
-          error_message?: string | null
+          run_id?: string | null
+          status?: OutreachEmailStatus
+          blocked_reason?: string | null
+          audit?: Json
+          primary_hook?: OutreachHook | null
+          steps?: Json
+          opener?: string | null
+          template_key?: string | null
+          draft_steps?: Json | null
+          drafted_at?: string | null
+          last_error?: string | null
+          author?: OutreachAuthor | null
+          model?: string | null
+          instantly_campaign_id?: string | null
+          instantly_lead_id?: string | null
+          approved_at?: string | null
+          sent_at?: string | null
+          opened_at?: string | null
+          open_count?: number
+          replied_at?: string | null
+          reply_class?: ReplyClass | null
+          bounced_at?: string | null
+          unsubscribed_at?: string | null
+          is_example?: boolean
+          linkedin_draft?: string | null
+          stats_synced_at?: string | null
+          queued_at?: string | null
+          sequence_state?: SequenceState | null
+          next_step?: number | null
+          next_step_at?: string | null
+          stopped_reason?: string | null
+          created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
-          email_account_id?: string
           lead_id?: string
-          subject?: string
-          body?: string
-          sent_at?: string
-          status?: 'sent' | 'failed' | 'bounced'
-          error_message?: string | null
+          run_id?: string | null
+          status?: OutreachEmailStatus
+          blocked_reason?: string | null
+          audit?: Json
+          primary_hook?: OutreachHook | null
+          steps?: Json
+          opener?: string | null
+          template_key?: string | null
+          draft_steps?: Json | null
+          drafted_at?: string | null
+          last_error?: string | null
+          author?: OutreachAuthor | null
+          model?: string | null
+          instantly_campaign_id?: string | null
+          instantly_lead_id?: string | null
+          approved_at?: string | null
+          sent_at?: string | null
+          opened_at?: string | null
+          open_count?: number
+          replied_at?: string | null
+          reply_class?: ReplyClass | null
+          bounced_at?: string | null
+          unsubscribed_at?: string | null
+          is_example?: boolean
+          linkedin_draft?: string | null
+          stats_synced_at?: string | null
+          queued_at?: string | null
+          sequence_state?: SequenceState | null
+          next_step?: number | null
+          next_step_at?: string | null
+          stopped_reason?: string | null
+          created_at?: string
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'email_logs_email_account_id_fkey'
-            columns: ['email_account_id']
-            referencedRelation: 'email_accounts'
+            foreignKeyName: 'outreach_emails_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'email_logs_lead_id_fkey'
+            foreignKeyName: 'outreach_emails_run_id_fkey'
+            columns: ['run_id']
+            referencedRelation: 'outreach_runs'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      outreach_messages: {
+        Row: {
+          id: string
+          email_id: string | null
+          kind: OutreachMessageKind
+          step: number | null
+          to_address: string
+          subject: string | null
+          graph_message_id: string | null
+          internet_message_id: string | null
+          conversation_id: string | null
+          sent_at: string
+          placement: SeedPlacement | null
+          placement_checked_at: string | null
+        }
+        Insert: {
+          id?: string
+          email_id?: string | null
+          kind?: OutreachMessageKind
+          step?: number | null
+          to_address: string
+          subject?: string | null
+          graph_message_id?: string | null
+          internet_message_id?: string | null
+          conversation_id?: string | null
+          sent_at?: string
+          placement?: SeedPlacement | null
+          placement_checked_at?: string | null
+        }
+        Update: {
+          id?: string
+          email_id?: string | null
+          kind?: OutreachMessageKind
+          step?: number | null
+          to_address?: string
+          subject?: string | null
+          graph_message_id?: string | null
+          internet_message_id?: string | null
+          conversation_id?: string | null
+          sent_at?: string
+          placement?: SeedPlacement | null
+          placement_checked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'outreach_messages_email_id_fkey'
+            columns: ['email_id']
+            referencedRelation: 'outreach_emails'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      lead_signals: {
+        Row: {
+          id: string
+          lead_id: string | null
+          source: SignalSource
+          external_id: string
+          kind: SignalKind
+          region: string | null
+          job_title: string | null
+          matched_term: string | null
+          job_url: string | null
+          posted_at: string | null
+          location: string | null
+          state_code: string | null
+          country_code: string | null
+          company_name: string | null
+          company_domain: string | null
+          company_linkedin_url: string | null
+          employee_count: number | null
+          industry: string | null
+          hiring_team: Json
+          excerpt: string | null
+          fit: SignalFit
+          fit_target: SignalTarget | null
+          fit_reason: string | null
+          fit_checked_at: string | null
+          status: SignalStatus
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id?: string | null
+          source: SignalSource
+          external_id: string
+          kind?: SignalKind
+          region?: string | null
+          job_title?: string | null
+          matched_term?: string | null
+          job_url?: string | null
+          posted_at?: string | null
+          location?: string | null
+          state_code?: string | null
+          country_code?: string | null
+          company_name?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          employee_count?: number | null
+          industry?: string | null
+          hiring_team?: Json
+          excerpt?: string | null
+          fit?: SignalFit
+          fit_target?: SignalTarget | null
+          fit_reason?: string | null
+          fit_checked_at?: string | null
+          status?: SignalStatus
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string | null
+          source?: SignalSource
+          external_id?: string
+          kind?: SignalKind
+          region?: string | null
+          job_title?: string | null
+          matched_term?: string | null
+          job_url?: string | null
+          posted_at?: string | null
+          location?: string | null
+          state_code?: string | null
+          country_code?: string | null
+          company_name?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          employee_count?: number | null
+          industry?: string | null
+          hiring_team?: Json
+          excerpt?: string | null
+          fit?: SignalFit
+          fit_target?: SignalTarget | null
+          fit_reason?: string | null
+          fit_checked_at?: string | null
+          status?: SignalStatus
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'lead_signals_lead_id_fkey'
             columns: ['lead_id']
             referencedRelation: 'leads'
             referencedColumns: ['id']
           }
         ]
+      }
+      suppression_list: {
+        Row: {
+          id: string
+          email: string | null
+          domain: string | null
+          reason: SuppressionReason
+          added_at: string
+        }
+        Insert: {
+          id?: string
+          email?: string | null
+          domain?: string | null
+          reason: SuppressionReason
+          added_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string | null
+          domain?: string | null
+          reason?: SuppressionReason
+          added_at?: string
+        }
+        Relationships: []
+      }
+      dismissed_leads: {
+        Row: {
+          id: string
+          google_place_id: string | null
+          website_host: string | null
+          phone_digits: string | null
+          company_name: string | null
+          reason: string | null
+          dismissed_by: string | null
+          dismissed_at: string
+        }
+        Insert: {
+          id?: string
+          google_place_id?: string | null
+          website_host?: string | null
+          phone_digits?: string | null
+          company_name?: string | null
+          reason?: string | null
+          dismissed_by?: string | null
+          dismissed_at?: string
+        }
+        Update: {
+          id?: string
+          google_place_id?: string | null
+          website_host?: string | null
+          phone_digits?: string | null
+          company_name?: string | null
+          reason?: string | null
+          dismissed_by?: string | null
+          dismissed_at?: string
+        }
+        Relationships: []
+      }
+      copy_feedback: {
+        Row: {
+          id: string
+          note: string
+          vertical: string | null
+          active: boolean
+          email_id: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          note: string
+          vertical?: string | null
+          active?: boolean
+          email_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          note?: string
+          vertical?: string | null
+          active?: boolean
+          email_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      team_members: {
+        Row: {
+          user_id: string
+          role: 'owner' | 'member'
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          role?: 'owner' | 'member'
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          role?: 'owner' | 'member'
+          created_at?: string
+        }
+        Relationships: []
+      }
+      outreach_settings: {
+        Row: {
+          key: string
+          value: Json
+          updated_at: string
+        }
+        Insert: {
+          key: string
+          value: Json
+          updated_at?: string
+        }
+        Update: {
+          key?: string
+          value?: Json
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -357,6 +822,40 @@ export interface Database {
           p_new_stage_id: string
           p_new_position: number
         }
+        Returns: undefined
+      }
+      is_team_member: {
+        Args: Record<string, never>
+        Returns: boolean
+      }
+      outreach_mailbox_status: {
+        Args: Record<string, never>
+        Returns: {
+          address: string
+          status: MailboxStatus
+          connected_at: string
+          inbox_checked_at: string | null
+        }[]
+      }
+      get_outreach_mailbox_secret: {
+        Args: Record<string, never>
+        Returns: {
+          address: string
+          refresh_token_enc: string
+          status: MailboxStatus
+          inbox_checked_at: string | null
+        }[]
+      }
+      connect_outreach_mailbox: {
+        Args: { p_address: string; p_refresh_token_enc: string }
+        Returns: undefined
+      }
+      update_outreach_mailbox: {
+        Args: { p_refresh_token_enc?: string; p_status?: MailboxStatus; p_inbox_checked_at?: string }
+        Returns: undefined
+      }
+      disconnect_outreach_mailbox: {
+        Args: Record<string, never>
         Returns: undefined
       }
     }
@@ -390,8 +889,28 @@ export type MeetingWithLead = Meeting & {
   leads: Pick<Lead, 'id' | 'contact_name' | 'company_name' | 'stage_id'> | null
 }
 
-export type EmailAccount = Database['public']['Tables']['email_accounts']['Row']
-export type EmailAccountInsert = Database['public']['Tables']['email_accounts']['Insert']
-export type EmailAccountUpdate = Database['public']['Tables']['email_accounts']['Update']
-export type EmailLog = Database['public']['Tables']['email_logs']['Row']
-export type EmailLogInsert = Database['public']['Tables']['email_logs']['Insert']
+export type OutreachRun = Database['public']['Tables']['outreach_runs']['Row']
+export type OutreachRunInsert = Database['public']['Tables']['outreach_runs']['Insert']
+export type OutreachRunUpdate = Database['public']['Tables']['outreach_runs']['Update']
+export type OutreachEmail = Database['public']['Tables']['outreach_emails']['Row']
+export type OutreachEmailInsert = Database['public']['Tables']['outreach_emails']['Insert']
+export type OutreachEmailUpdate = Database['public']['Tables']['outreach_emails']['Update']
+export type OutreachMessage = Database['public']['Tables']['outreach_messages']['Row']
+export type OutreachMessageInsert = Database['public']['Tables']['outreach_messages']['Insert']
+export type OutreachMessageUpdate = Database['public']['Tables']['outreach_messages']['Update']
+export type LeadSignal = Database['public']['Tables']['lead_signals']['Row']
+export type LeadSignalInsert = Database['public']['Tables']['lead_signals']['Insert']
+export type LeadSignalUpdate = Database['public']['Tables']['lead_signals']['Update']
+export type Suppression = Database['public']['Tables']['suppression_list']['Row']
+export type SuppressionInsert = Database['public']['Tables']['suppression_list']['Insert']
+export type OutreachSetting = Database['public']['Tables']['outreach_settings']['Row']
+export type DismissedLeadInsert = Database['public']['Tables']['dismissed_leads']['Insert']
+export type CopyFeedback = Database['public']['Tables']['copy_feedback']['Row']
+export type CopyFeedbackInsert = Database['public']['Tables']['copy_feedback']['Insert']
+
+// Shape of each entry in outreach_emails.steps
+export interface OutreachEmailStep {
+  step: 1 | 2 | 3
+  subject: string
+  body: string
+}

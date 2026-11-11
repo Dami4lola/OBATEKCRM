@@ -11,8 +11,12 @@ import {
   Phone,
   Building2,
   DollarSign,
-  Send,
   CalendarPlus,
+  Briefcase,
+  Globe,
+  MapPin,
+  Link2,
+  Users,
 } from 'lucide-react'
 import {
   Sheet,
@@ -52,8 +56,16 @@ import {
 } from '@/components/ui/select'
 import { useUpdateLead, useDeleteLead } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
-import { leadSchema, type LeadFormData } from '@/lib/validations/lead'
-import { ComposeEmailDialog } from '@/components/email/compose-email-dialog'
+import {
+  leadSchema,
+  leadFormToRow,
+  EMAIL_SOURCES,
+  type LeadFormData,
+} from '@/lib/validations/lead'
+import { LeadOutreachFields } from './lead-outreach-fields'
+import { externalUrl, paymentTermsLabel } from '@/lib/utils'
+import { LeadSiteCheck } from './lead-site-check'
+import { LeadSignals } from './lead-signals'
 import { MeetingFormDialog } from '@/components/meetings/meeting-form-dialog'
 import { useLeadMeetings } from '@/lib/queries/meetings'
 import { getRoleLabel } from '@/lib/validations/meeting'
@@ -67,7 +79,6 @@ interface LeadSheetProps {
 
 export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [isEmailOpen, setIsEmailOpen] = useState(false)
   const [isMeetingOpen, setIsMeetingOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
   const updateLead = useUpdateLead()
@@ -87,11 +98,28 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           payment_terms: lead.payment_terms ?? null,
           notes: lead.notes || '',
           stage_id: lead.stage_id,
+          job_title: lead.job_title || '',
+          website: lead.website || '',
+          city: lead.city || '',
+          region: lead.region || '',
+          country: lead.country || '',
+          vertical: lead.vertical || '',
+          staff_size: lead.staff_size ?? null,
+          linkedin_url: lead.linkedin_url || '',
+          email_source: lead.email_source ?? null,
         }
       : undefined,
   })
 
   const currentStage = stages.find((s) => s.id === lead?.stage_id)
+  const leadLocation = [lead?.city, lead?.region, lead?.country]
+    .filter(Boolean)
+    .join(', ')
+  const websiteUrl = externalUrl(lead?.website)
+  const linkedinUrl = externalUrl(lead?.linkedin_url)
+  const emailSourceLabel = EMAIL_SOURCES.find(
+    (s) => s.value === lead?.email_source
+  )?.label
 
   const onSubmit = async (data: LeadFormData) => {
     if (!lead) return
@@ -99,15 +127,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
     try {
       await updateLead.mutateAsync({
         id: lead.id,
-        updates: {
-          ...data,
-          value: data.value ?? null,
-          payment_terms: data.payment_terms ?? null,
-          email: data.email || null,
-          phone: data.phone || null,
-          company_name: data.company_name || null,
-          notes: data.notes || null,
-        },
+        updates: leadFormToRow(data),
       })
       toast.success('Lead updated successfully')
       setIsEditing(false)
@@ -134,7 +154,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
         <SheetHeader className="space-y-1">
-          <div className="flex items-center justify-between">
+          {/* pr-8 keeps the delete button clear of the sheet's close X */}
+          <div className="flex items-center justify-between pr-8">
             <SheetTitle className="text-xl">{lead.contact_name}</SheetTitle>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -172,7 +193,7 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           )}
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-6 px-4 pb-6">
           {!isEditing ? (
             <>
               {/* Contact Info */}
@@ -181,28 +202,26 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   <div className="flex items-center gap-2 text-sm">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span>{lead.company_name}</span>
+                    {lead.vertical && (
+                      <Badge variant="secondary">{lead.vertical}</Badge>
+                    )}
+                  </div>
+                )}
+                {lead.job_title && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <span>{lead.job_title}</span>
                   </div>
                 )}
                 {lead.email && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <a
-                        href={`mailto:${lead.email}`}
-                        className="text-primary hover:underline"
-                      >
-                        {lead.email}
-                      </a>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsEmailOpen(true)}
-                      className="h-7 px-2"
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={`mailto:${lead.email}`}
+                      className="text-primary hover:underline"
                     >
-                      <Send className="h-3 w-3 mr-1" />
-                      Send
-                    </Button>
+                      {lead.email}
+                    </a>
                   </div>
                 )}
                 {lead.phone && (
@@ -216,6 +235,49 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                     </a>
                   </div>
                 )}
+                {websiteUrl && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {lead.website}
+                    </a>
+                  </div>
+                )}
+                {linkedinUrl && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Link2 className="h-4 w-4 text-muted-foreground" />
+                    <a
+                      href={linkedinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      LinkedIn profile
+                    </a>
+                  </div>
+                )}
+                {leadLocation && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <span>{leadLocation}</span>
+                  </div>
+                )}
+                {lead.staff_size && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span>{lead.staff_size} staff</span>
+                  </div>
+                )}
+                {emailSourceLabel && (
+                  <p className="text-xs text-muted-foreground">
+                    Email source: {emailSourceLabel}
+                  </p>
+                )}
                 {lead.value && (
                   <div className="flex items-center gap-2 text-sm font-medium text-green-600">
                     <DollarSign className="h-4 w-4" />
@@ -223,13 +285,17 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                       ${Number(lead.value).toLocaleString()}
                       {lead.payment_terms && (
                         <span className="text-muted-foreground font-normal ml-1">
-                          / {lead.payment_terms === 'one_time' ? 'one time' : lead.payment_terms === 'monthly' ? 'mo' : 'hr'}
+                          / {paymentTermsLabel(lead.payment_terms)}
                         </span>
                       )}
                     </span>
                   </div>
                 )}
               </div>
+
+              <LeadSignals lead={lead} />
+
+              <LeadSiteCheck key={lead.id} lead={lead} />
 
               {/* Notes */}
               {lead.notes && (
@@ -439,6 +505,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                   )}
                 />
 
+                <LeadOutreachFields control={form.control} />
+
                 <div className="flex gap-2 pt-4">
                   <Button
                     type="button"
@@ -460,12 +528,6 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
             </Form>
           )}
         </div>
-
-        <ComposeEmailDialog
-          open={isEmailOpen}
-          onOpenChange={setIsEmailOpen}
-          lead={lead}
-        />
 
         <MeetingFormDialog
           open={isMeetingOpen}

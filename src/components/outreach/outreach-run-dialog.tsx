@@ -1,0 +1,279 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { addDays, format, setHours, setMinutes } from 'date-fns'
+import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import {
+  useCreateOutreachRun,
+  useOutreachGather,
+  type GatherRow,
+} from '@/lib/queries/outreach'
+import { GatherStep } from './gather-step'
+import { ScheduleStep, type RunTiming } from './schedule-step'
+import { ActiveRuns } from './active-runs'
+import { RecentReplies } from './recent-replies'
+import { SeedChecks } from './seed-checks'
+import { WriteStep } from './write-step'
+
+type Step = 'gather' | 'when' | 'write'
+
+const DATETIME_LOCAL = "yyyy-MM-dd'T'HH:mm"
+
+// Big enough that most runs need no scrolling. Write keeps a fixed height, so
+// the pop-up doesn't jump between emails.
+const DIALOG_SIZES: Record<Step, string> = {
+  gather: 'sm:max-w-[75rem]',
+  when: 'sm:max-w-2xl',
+  write: 'sm:max-w-[75rem] lg:h-[min(calc(100vh-2rem),60rem)]',
+}
+
+function isDefaultSelected(row: GatherRow) {
+  return !row.blocked && !row.belowThreshold
+}
+
+interface OutreachRunDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function OutreachRunDialog({ open, onOpenChange }: OutreachRunDialogProps) {
+  const [step, setStep] = useState<Step>('gather')
+  // Leads ticked or unticked by hand, away from their default, so the
+  // defaults apply without an effect
+  const [toggledIds, setToggledIds] = useState<Set<string>>(new Set())
+  const [timing, setTiming] = useState<RunTiming>('now')
+  const [scheduledFor, setScheduledFor] = useState('')
+  const [minScheduledFor, setMinScheduledFor] = useState('')
+  // The run whose drafts the Write step shows
+  const [runId, setRunId] = useState<string | null>(null)
+
+  const gather = useOutreachGather(open)
+  const createRun = useCreateOutreachRun()
+
+  const rows = useMemo(() => gather.data?.rows ?? [], [gather.data])
+  const selectedIds = useMemo(
+    () =>
+      new Set(
+        rows
+          .filter((row) => !row.blocked && isDefaultSelected(row) !== toggledIds.has(row.lead.id))
+          .map((row) => row.lead.id)
+      ),
+    [rows, toggledIds]
+  )
+  const stageName = gather.data?.stage.name ?? 'New'
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setStep('gather')
+      setToggledIds(new Set())
+      setTiming('now')
+      setScheduledFor('')
+      setRunId(null)
+    }
+    onOpenChange(nextOpen)
+  }
+
+  const handleToggle = (leadId: string, checked: boolean) => {
+    const row = rows.find((r) => r.lead.id === leadId)
+    if (!row) return
+    setToggledIds((prev) => {
+      const next = new Set(prev)
+      if (checked === isDefaultSelected(row)) next.delete(leadId)
+      else next.add(leadId)
+      return next
+    })
+  }
+
+  const handleToggleAll = (checked: boolean) => {
+    setToggledIds(
+      new Set(
+        rows
+          .filter((row) => isDefaultSelected(row) !== checked)
+          .map((row) => row.lead.id)
+      )
+    )
+  }
+
+  const handleTimingChange = (next: RunTiming) => {
+    setTiming(next)
+    if (next === 'schedule') {
+      const now = new Date()
+      setMinScheduledFor(format(now, DATETIME_LOCAL))
+      if (!scheduledFor) {
+        // Default to 9:00 tomorrow
+        setScheduledFor(format(setMinutes(setHours(addDays(now, 1), 9), 0), DATETIME_LOCAL))
+      }
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!gather.data) return
+
+    let runAt: Date | null = null
+    if (timing === 'schedule') {
+      runAt = new Date(scheduledFor)
+      if (isNaN(runAt.getTime()) || runAt <= new Date()) {
+        toast.error('Pick a time in the future')
+        return
+      }
+    }
+
+    try {
+      const run = await createRun.mutateAsync({
+        rows,
+        selectedIds,
+        scheduledFor: runAt,
+        mode: gather.data.settings.mode,
+      })
+      if (runAt) {
+        toast.success(`Outreach scheduled for ${format(runAt, 'PPp')}`)
+        handleOpenChange(false)
+      } else {
+        setRunId(run.id)
+        setStep('write')
+      }
+    } catch (error) {
+      toast.error('Failed to start the run')
+      console.error('Outreach run error:', error)
+    }
+  }
+
+  const submitDisabled =
+    createRun.isPending ||
+    (timing === 'now' && selectedIds.size === 0) ||
+    (timing === 'schedule' && !scheduledFor)
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className={cn(
+          'flex max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-y-auto p-5 lg:overflow-hidden',
+          DIALOG_SIZES[step]
+        )}
+      >
+        <DialogHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <DialogTitle>
+              {step === 'gather' && 'Run outreach'}
+              {step === 'when' && 'When should it run?'}
+              {step === 'write' && 'Write and approve'}
+            </DialogTitle>
+            {gather.data && (
+              <Badge variant="outline">{gather.data.settings.mode} mode</Badge>
+            )}
+            {step === 'write' && (
+              <Button size="sm" className="mr-8 ml-auto" onClick={() => handleOpenChange(false)}>
+                Done for now
+              </Button>
+            )}
+          </div>
+          {step === 'gather' && (
+            <DialogDescription>
+              Leads in {stageName} get a cold email sequence and move to{' '}
+              {gather.data?.settings.target_stage_name ?? 'Contacted'} once the
+              first email is sent.
+            </DialogDescription>
+          )}
+        </DialogHeader>
+
+        <div className="flex shrink-0 flex-col lg:min-h-0 lg:flex-1 lg:shrink">
+          {step === 'gather' && (
+            <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
+              <div className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
+                {gather.isLoading && (
+                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Gathering leads...
+                  </div>
+                )}
+                {gather.error && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {gather.error.message}
+                  </div>
+                )}
+                {gather.data && (
+                  <GatherStep
+                    rows={rows}
+                    settings={gather.data.settings}
+                    stageName={stageName}
+                    selectedIds={selectedIds}
+                    onToggle={handleToggle}
+                    onToggleAll={handleToggleAll}
+                  />
+                )}
+              </div>
+              <div className="space-y-4 empty:hidden lg:w-96 lg:shrink-0 lg:overflow-y-auto">
+                <ActiveRuns
+                  onReview={(id) => {
+                    setRunId(id)
+                    setStep('write')
+                  }}
+                />
+                <RecentReplies />
+                <SeedChecks />
+              </div>
+            </div>
+          )}
+
+          {step === 'when' && (
+            <ScheduleStep
+              timing={timing}
+              onTimingChange={handleTimingChange}
+              scheduledFor={scheduledFor}
+              onScheduledForChange={setScheduledFor}
+              minScheduledFor={minScheduledFor}
+              selectedCount={selectedIds.size}
+              stageName={stageName}
+            />
+          )}
+
+          {step === 'write' && runId && <WriteStep runId={runId} />}
+        </div>
+
+        {step !== 'write' && (
+          <DialogFooter>
+            {step === 'gather' && (
+              <>
+                <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={() => setStep('when')} disabled={!gather.data}>
+                  Next
+                </Button>
+              </>
+            )}
+            {step === 'when' && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setStep('gather')}
+                  disabled={createRun.isPending}
+                >
+                  Back
+                </Button>
+                <Button onClick={handleSubmit} disabled={submitDisabled}>
+                  {createRun.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {timing === 'now' ? 'Start run' : 'Schedule run'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}

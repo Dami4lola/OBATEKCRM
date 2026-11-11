@@ -3,6 +3,8 @@ export interface ParsedRow {
   data: Record<string, string | number | null>
   errors: string[]
   isValid: boolean
+  // Left out of the import: already a lead, or repeated earlier in the file
+  duplicate?: 'existing' | 'file'
 }
 
 export interface ParseResult {
@@ -26,6 +28,14 @@ export interface LeadImportFields {
   value: number | null
   payment_terms: 'one_time' | 'monthly' | 'hourly' | null
   notes: string | null
+  job_title: string | null
+  website: string | null
+  city: string | null
+  region: string | null
+  country: string | null
+  vertical: string | null
+  staff_size: number | null
+  linkedin_url: string | null
 }
 
 export type FileType = 'csv' | 'xlsx' | 'xls' | 'json'

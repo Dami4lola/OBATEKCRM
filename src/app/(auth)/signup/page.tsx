@@ -75,8 +75,10 @@ export default function SignupPage() {
     })
 
     if (error) {
-      // Check for API key related errors
-      if (error.message.includes('API key') || error.message.includes('apikey')) {
+      if (error.status === 429) {
+        setError('Too many sign-up attempts right now. Wait a few minutes and try again.')
+      } else if (error.message.includes('API key') || error.message.includes('apikey')) {
+        // API key related errors
         setError('Configuration error: Invalid or missing API key. Please check your Supabase settings.')
       } else {
         setError(error.message)

@@ -2,7 +2,27 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import type { LeadKey } from '@/lib/import/duplicates'
 import type { Lead, LeadInsert, LeadUpdate } from '@/types/database'
+
+const KEY_PAGE_SIZE = 1000
+
+// Email, name and company of every lead, for the import's duplicate check.
+// Read a page at a time: the API returns 1,000 rows at most.
+export async function fetchLeadKeys(): Promise<LeadKey[]> {
+  const supabase = createClient()
+  const keys: LeadKey[] = []
+  for (let from = 0; ; from += KEY_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('email, contact_name, company_name')
+      .order('id', { ascending: true })
+      .range(from, from + KEY_PAGE_SIZE - 1)
+    if (error) throw error
+    keys.push(...(data || []))
+    if (!data || data.length < KEY_PAGE_SIZE) return keys
+  }
+}
 
 export function useLeads() {
   const supabase = createClient()

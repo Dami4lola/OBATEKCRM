@@ -21,6 +21,15 @@ CREATE TABLE IF NOT EXISTS meetings (
 CREATE INDEX IF NOT EXISTS idx_meetings_lead ON meetings(lead_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(meeting_date DESC);
 
+-- Same helper as supabase-setup.sql; recreated here in case it is missing
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS update_meetings_updated_at ON meetings;
 CREATE TRIGGER update_meetings_updated_at
   BEFORE UPDATE ON meetings
@@ -35,3 +44,6 @@ CREATE POLICY "Authenticated users can manage meetings"
   TO authenticated
   USING (true)
   WITH CHECK (true);
+
+-- Make the new table visible to the Supabase API immediately
+NOTIFY pgrst, 'reload schema';

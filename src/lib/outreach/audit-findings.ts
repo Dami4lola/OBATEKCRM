@@ -1,0 +1,215 @@
+import type { Json, Lead, LeadUpdate, OutreachHook } from '@/types/database'
+import { parseSignals, type LeadSignals } from './scoring'
+import type { SizeSignals } from './company-size'
+import { describeAgency, type AgencyProfile } from './agency'
+
+// Audit results and what they mean, without the fetching (audit.ts), so
+// browser code like the lead sheet can use them too
+
+const OUTDATED_YEARS = 3
+
+// found: a site of their own was on file or on their Google listing
+// none_confirmed: their Google listing has none, or they only have a Facebook/directory page
+// unknown: nothing on file and no Google listing matched, so we can't say
+export type WebsiteStatus = 'found' | 'none_confirmed' | 'unknown'
+
+export interface ListingInfo {
+  place_id: string
+  name: string | null
+  matched_on: 'phone' | 'email_domain' | 'name_city'
+}
+
+export interface SiteAudit {
+  audited_at: string
+  input_url: string | null
+  final_url: string | null
+  has_site: boolean
+  website_status: WebsiteStatus
+  listing: ListingInfo | null // the Google listing matched during this check, if any
+  dead_site: boolean
+  https: boolean
+  mobile_viewport: boolean | null
+  perf_score: number | null
+  copyright_year: number | null
+  has_booking: boolean
+  booking_tool: string | null
+  // Links like "Book A Test Drive": a request someone has to answer; missing on older audits
+  request_paths?: string[]
+  has_contact_form: boolean
+  emails_found: string[]
+  owner_name: string | null
+  seo_issues: string[]
+  phone_on_homepage: boolean
+  pages_checked: string[]
+  slow_callback_reviews: string[] | null // matching review snippets; null = not checked
+  size_signals?: SizeSignals // team-size wording on the site; missing on older audits
+  agency?: AgencyProfile // services, GoHighLevel, off-target; used for agency leads only
+  errors: string[]
+}
+
+// What /api/outreach/audit returns
+export interface AuditLeadResult {
+  lead: Lead
+  audit: SiteAudit | null
+  hook: OutreachHook | null
+  skipped: 'recent' | null
+}
+
+export const HOOK_LABELS: Record<OutreachHook, string> = {
+  no_site: 'No real website',
+  no_booking: 'No online booking or quote request seen',
+  request_only: 'Requests go to an inbox; no instant booking',
+  not_mobile: "Website doesn't work well on phones",
+  slow: 'Website is slow on mobile',
+  outdated: 'Website looks out of date',
+  seo_local: "Website isn't set up to be found locally",
+  generic: 'No obvious website problem',
+  job_post: 'Hiring for work OBATEK automates',
+}
+
+export function parseAudit(value: Json | null | undefined): SiteAudit | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const audit = value as unknown as SiteAudit
+  if (typeof audit.audited_at !== 'string' || typeof audit.has_site !== 'boolean') return null
+  // Audits from before the Google lookup never confirmed a missing website
+  if (!audit.website_status) {
+    return { ...audit, website_status: audit.has_site ? 'found' : 'unknown', listing: null }
+  }
+  return audit
+}
+
+// No site of their own, and we're sure of it (dead sites count too)
+export function hasNoSite(audit: SiteAudit): boolean {
+  return audit.dead_site || audit.website_status === 'none_confirmed'
+}
+
+// Agencies build and rank websites for a living: their own site is never
+// the angle, only how they handle new inquiries
+const AGENCY_HOOKS: OutreachHook[] = ['no_site', 'no_booking', 'request_only', 'generic']
+
+export function primaryHook(audit: SiteAudit, vertical?: string | null, now = new Date()): OutreachHook {
+  if (vertical === 'agency') {
+    const hook = primaryHook(audit, null, now)
+    if (AGENCY_HOOKS.includes(hook)) return hook
+    return audit.booking_tool ? 'generic' : 'request_only'
+  }
+  if (hasNoSite(audit)) return 'no_site'
+  // Website unknown: never claim they don't have one
+  if (!audit.has_site) return 'generic'
+  // Unreadable homepage: don't claim problems we couldn't see
+  if (audit.pages_checked.length === 0 || audit.mobile_viewport === null) return 'generic'
+  if (!audit.has_booking && !audit.has_contact_form) return 'no_booking'
+  // Request links (test drive, quote) but nothing that books a time: each one
+  // waits in an inbox for a reply
+  if (!audit.booking_tool && audit.has_booking) return 'request_only'
+  if (!audit.mobile_viewport) return 'not_mobile'
+  if (audit.perf_score !== null && audit.perf_score < 50) return 'slow'
+  if (audit.copyright_year !== null && audit.copyright_year <= now.getFullYear() - OUTDATED_YEARS) {
+    return 'outdated'
+  }
+  // A plain contact form comes after real site problems, so openers vary
+  if (!audit.booking_tool) return 'request_only'
+  if (audit.seo_issues.length > 0) return 'seo_local'
+  return 'generic'
+}
+
+// Pain signals for scoring, merged over what's already on the lead
+export function auditSignals(audit: SiteAudit, existing: LeadSignals, vertical?: string | null): LeadSignals {
+  const readable = audit.has_site && !audit.dead_site && audit.mobile_viewport !== null
+  const signals: LeadSignals = {
+    ...existing,
+    checked_at: audit.audited_at,
+    no_site: audit.website_status === 'none_confirmed' || undefined,
+    dead_site: audit.dead_site || undefined,
+  }
+  if (readable) signals.no_booking = (!audit.has_booking && !audit.has_contact_form) || undefined
+  if (audit.slow_callback_reviews !== null) {
+    signals.slow_callback_reviews = audit.slow_callback_reviews.length > 0 || undefined
+  }
+  // Branding, social-content and enterprise agencies aren't who we're after
+  if (vertical === 'agency' && audit.agency) signals.off_target = !!audit.agency.off_target || undefined
+  // Drop false/undefined so the stored JSON only lists signals that apply
+  return Object.fromEntries(
+    Object.entries(signals).filter(([, value]) => value !== undefined && value !== false)
+  ) as LeadSignals
+}
+
+// What the site check says about an agency: their services, and how new
+// inquiries reach them. Never their site's speed, SEO or design.
+function agencyFindings(audit: SiteAudit): string[] {
+  const findings: string[] = []
+  if (audit.agency) {
+    findings.push(describeAgency(audit.agency))
+    findings.push(...audit.agency.evidence.filter((line) => !line.startsWith('Offers ')))
+  }
+  if (audit.booking_tool) findings.push(`Books calls online with ${audit.booking_tool}`)
+  else if (audit.has_contact_form || audit.has_booking) findings.push('New inquiries come in through a form, no instant booking seen')
+  if (audit.emails_found.length) findings.push(`Email on site: ${audit.emails_found[0]}`)
+  if (audit.owner_name) findings.push(`Owner (from site, unverified): ${audit.owner_name}`)
+  return findings
+}
+
+// Plain-English findings for the lead sheet and call brief
+export function auditFindings(audit: SiteAudit, vertical?: string | null): string[] {
+  if (vertical === 'agency' && audit.has_site && !audit.dead_site && audit.website_status !== 'unknown') {
+    return agencyFindings(audit)
+  }
+  const findings: string[] = []
+  if (audit.website_status === 'unknown') {
+    return ['Website unknown: none on file and no matching Google listing']
+  }
+  if (!audit.has_site) {
+    return [audit.listing ? 'Google listing has no website' : 'No website of their own']
+  }
+  if (audit.dead_site) return ['Website is down or not found']
+  if (audit.listing) findings.push('Website found on Google listing')
+  if (audit.booking_tool) findings.push(`Books online with ${audit.booking_tool}`)
+  else if (audit.request_paths?.length) {
+    findings.push(`Request forms, no live booking: ${audit.request_paths.map((p) => `"${p}"`).join(', ')}`)
+  } else if (audit.has_booking) findings.push('Has a quote or booking button, no live booking')
+  else if (audit.has_contact_form) findings.push('Contact form only, no booking')
+  else if (audit.mobile_viewport !== null) {
+    findings.push('No booking or quote request seen (forms that load later can be missed)')
+  }
+  if (audit.mobile_viewport === false) findings.push('Not set up for phones')
+  if (audit.perf_score !== null) findings.push(`Mobile speed ${audit.perf_score}/100`)
+  if (audit.copyright_year !== null) findings.push(`Footer year ${audit.copyright_year}`)
+  if (!audit.https) findings.push('No HTTPS')
+  if (audit.emails_found.length) findings.push(`Email on site: ${audit.emails_found[0]}`)
+  if (audit.owner_name) findings.push(`Owner (from site, unverified): ${audit.owner_name}`)
+  findings.push(...audit.seo_issues)
+  if (audit.slow_callback_reviews?.length) {
+    findings.push(`${audit.slow_callback_reviews.length} review(s) mention slow callbacks`)
+  }
+  return findings
+}
+
+// What a finished audit changes on the lead. Only fills gaps: never
+// overwrites an email or owner someone entered by hand.
+export function leadUpdatesFromAudit(
+  lead: Pick<Lead, 'email' | 'email_source' | 'owner_name' | 'contact_name' | 'company_name' | 'signals' | 'vertical'>,
+  audit: SiteAudit
+): LeadUpdate {
+  const updates: LeadUpdate = {
+    audit: audit as unknown as Json,
+    audited_at: audit.audited_at,
+    signals: auditSignals(audit, parseSignals(lead.signals), lead.vertical) as Json,
+  }
+
+  const current = lead.email?.trim().toLowerCase()
+  if (!current && audit.emails_found[0]) {
+    updates.email = audit.emails_found[0]
+    updates.email_source = 'website'
+  } else if (current && audit.emails_found.includes(current) && lead.email_source !== 'website') {
+    // The business publishes this address itself: the CASL basis (§7)
+    updates.email_source = 'website'
+  }
+
+  if (!lead.owner_name && audit.owner_name) {
+    updates.owner_name = audit.owner_name
+    // Places leads start with the business name as the contact
+    if (lead.contact_name === lead.company_name) updates.contact_name = audit.owner_name
+  }
+
+  return updates
+}
