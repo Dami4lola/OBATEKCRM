@@ -54,11 +54,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useUpdateLead, useDeleteLead } from '@/lib/queries/leads'
+import { useUpdateLead, useDeleteLead, fetchCurrentUserId } from '@/lib/queries/leads'
 import { useStages } from '@/lib/queries/stages'
 import {
   leadSchema,
   leadFormToRow,
+  caslUpdates,
   EMAIL_SOURCES,
   type LeadFormData,
 } from '@/lib/validations/lead'
@@ -107,6 +108,8 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
           staff_size: lead.staff_size ?? null,
           linkedin_url: lead.linkedin_url || '',
           email_source: lead.email_source ?? null,
+          casl_confirmed: !!lead.casl_confirmed_at,
+          casl_note: lead.casl_note || '',
         }
       : undefined,
   })
@@ -125,9 +128,14 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
     if (!lead) return
 
     try {
+      // Only look up who's ticking when the tick is new
+      const userId = data.casl_confirmed && !lead.casl_confirmed_at ? await fetchCurrentUserId() : null
       await updateLead.mutateAsync({
         id: lead.id,
-        updates: leadFormToRow(data),
+        updates: {
+          ...leadFormToRow(data),
+          ...caslUpdates(data.casl_confirmed, lead.casl_confirmed_at, userId),
+        },
       })
       toast.success('Lead updated successfully')
       setIsEditing(false)
@@ -276,6 +284,12 @@ export function LeadSheet({ lead, open, onOpenChange }: LeadSheetProps) {
                 {emailSourceLabel && (
                   <p className="text-xs text-muted-foreground">
                     Email source: {emailSourceLabel}
+                  </p>
+                )}
+                {lead.casl_confirmed_at && (
+                  <p className="text-xs text-muted-foreground">
+                    CASL basis confirmed {format(new Date(lead.casl_confirmed_at), 'MMM d, yyyy')}
+                    {lead.casl_note && `: ${lead.casl_note}`}
                   </p>
                 )}
                 {lead.value && (

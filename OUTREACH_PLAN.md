@@ -12,7 +12,7 @@ The engine works in four steps:
 
 The engine starts in **manual mode**: you approve every email. The best performers become the examples Claude learns from. Once results hold up, you switch to **auto mode**.
 
-**Stack:** Next.js 16 (App Router) · TypeScript · Supabase · React Query · shadcn/ui, all in this repo. It runs **locally on Dami's laptop** (`npm run dev` / `npm start`), not on Vercel.
+**Stack:** Next.js 16 (App Router) · TypeScript · Supabase · React Query · shadcn/ui, all in this repo. It is moving from **Vercel** (`obatekcrm.vercel.app`) to **Railway** at `crm.obatek.net`: two services built from GitHub `main`, the app and a 5-minute cron scheduler (§11, §14). Vercel stays up until Railway is verified, then is removed. Locally it runs with `npm run dev`, or in Docker (§14).
 **Database:** `supabase/migrations/002_outreach.sql` (applied), `003_team_access.sql` (§16), `004_sourcing.sql` (§4) and `005_audit.sql` (§5). Types are in `src/types/database.ts`.
 
 **Starting ICP:** handyman and home-repair businesses with 2–10 staff that run jobs out of spreadsheets and texts. Bigger HVAC and electrical firms come later.
@@ -137,7 +137,7 @@ Default weights, from the Build Plan, stored in `outreach_settings.score_weights
 | Pain signal: no site, dead site, no online booking, reviews mentioning slow callbacks, or hiring admin/dispatch | +3 (once, however many apply) | audit, Places reviews, job feed |
 | 2–15 staff (agencies and property 2–20, `staff_range`) | +2 | `staff_size` |
 | Owner reachable directly | +2 | owner name found on the About page or LinkedIn **and** a direct email or phone; or `job_title` matches owner/founder/president/principal |
-| Target vertical | +1 | `vertical` in `target_verticals` (`handyman`, `agency`, `car_dealer`, `property`; car dealers were missing until 018); agencies show their services, e.g. "Agency: web design, local SEO, GoHighLevel" |
+| Target vertical | +1 | `vertical` in `target_verticals` (`handyman`, `agency`, `car_dealer`, `property`, `home_care`; car dealers were missing until 018); agencies show their services, e.g. "Agency: web design, local SEO, GoHighLevel" |
 | Off-target agency (branding, social content, enterprise) | −max | `signals.off_target`, set by the site check for agency leads: they score below zero, start unticked and are offered by Clean up |
 
 - **Threshold:** `outreach_settings.score_threshold`, default **5**. This is a placeholder; the Build Plan lists it as an open question.
@@ -271,7 +271,9 @@ Block if:
 - another lead in the same run has the same lowercased email
 - the lead already has a draft, approved or queued email in another live run (the daily Buying signals run drafts leads that are still in New). Cancelled and failed runs don't count: cancelling a run skips its unsent emails, so nothing queued goes out and its leads can join a new run. Follow-ups to an email already sent carry on after Cancel, by choice; a reply or opt-out still stops them
 
-The CASL basis for each lead is its `email_source`: the address was published by the business, and the pitch relates to their role. Website-found emails from the audit (§5) give Places leads this basis automatically. **Confirm the CASL details with a lawyer before scaling Canadian sends** (Build Plan).
+The CASL basis for each lead is its `email_source`: the address was published by the business, and the pitch relates to their role. Website-found emails from the audit (§5) give Places leads this basis automatically.
+
+**CASL basis confirmed** (`022_casl_confirmed.sql`): when you already know a lead may be emailed (the address is published, or they agreed), tick it on the lead (edit form) or for a whole import (one tick for every row, then untick single rows). It saves `casl_confirmed_at`, `casl_confirmed_by` and an optional `casl_note`, and passes the CASL rule (and the no-country rule) without paying for a site check. Every other rule still applies. Unticking clears all three. **Confirm the CASL details with a lawyer before scaling Canadian sends** (Build Plan).
 
 Every outgoing email must include (added by `mail-message.ts` at send time; sending refuses without it):
 - sender name and business name
@@ -308,6 +310,7 @@ No links, no tracking pixel. The inbox sync turns STOP/unsubscribe replies into 
   - **`agency`** (`015_agencies.sql`): instant follow-up on new inquiries, an AI receptionist for the sales line during client calls, discovery calls booked onto the calendar; US spelling, no "here in Ottawa". The prompt tells Claude to write about their own new-business inquiries and never judge their website, SEO or ads. Call brief question: "When someone fills in your contact form at 9pm, what happens next?"
   - **`car_dealer`** (`012_car_dealer_template.sql`): test drives buyers can book themselves, enquiry follow-up, and an AI receptionist for when the team is busy or the lot is closed. The audit asks how {{company}} handles calls and buyer enquiries. Hand-typed verticals are matched loosely ("Car Dealer" → `car_dealer`), and the migration moves existing "used car dealer"-style leads to `car_dealer`.
   - **`property`** (`018_property.sql`): a CRM that keeps every lead, tenant and owner in one place, instant replies to inquiries, and an AI receptionist for after-hours calls; US spelling, 59 words plus the opener. The prompt tells Claude to write about inquiries and calls waiting while the team is out at showings or inspections, and never to comment on listings, prices or the market. Site-critique hooks stay allowed (unlike agencies). Call brief question: "When a tenant calls about a leak at night, or a buyer inquiry comes in during a showing, who picks up?" Buying signals also look for inside sales agents (real estate's appointment setter), leasing agents and property administrators.
+  - **`home_care`** (`023_home_care.sql`): non-medical senior home care agencies in Canada and the US. A CRM that keeps every family inquiry and referral in one place, instant replies so families hear back right away, and an AI receptionist for after-hours calls from families and caregivers. "Inquiry" spelling, which reads fine in both countries. The prompt tells Claude to write about the agency's own calls and inquiries (families calling evenings and weekends about a parent, referrals waiting, the office juggling calls while scheduling caregivers), and never to mention anyone's health or the care a client receives. Call brief question: "When a family calls on a Sunday evening about care for their mom or dad, who picks up?" Staff range 2–50, because agencies count caregivers as staff. Imports match "home care", "home health", "senior care", "elder care", "caregiver", "personal support" and "companion care" (`normalizeVertical`, checked before cleaning), and the migration moves existing leads with those industries to `home_care`. No lead search of its own: add them by import, Lusha or One search.
 - **Copy rules** (`src/lib/outreach/prompts/copy-system.md`):
   - Opener: one or two sentences, one specific observation from the audit or reviews, nothing invented
   - Email 1 in total: under 90 words, plain text, no links except the unsubscribe footer, one question as the CTA
@@ -395,8 +398,10 @@ Sending runs in-house from the **getobatek.com Microsoft 365 mailbox** through M
 ### Instantly (stages 6–7, retired)
 Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both were replaced in 7.1–7.3 before any real sends; the `instantly_*` columns stay for history and the settings were removed in 014. Reused from that work: the scheduler, gather, drafting, the reply classifier, suppression and auto-pause.
 
-### Scheduler (local, built)
-- `scripts/outreach-scheduler.mjs`, run with `npm run outreach:scheduler` in a second terminal next to `npm run dev`. It reads `.env.local` and needs `CRON_SECRET`.
+### Scheduler (built)
+- `scripts/outreach-scheduler.mjs` calls the tick route. Two modes:
+  - **On Railway (production):** the `scheduler` service runs `node scripts/outreach-scheduler.mjs --once` as a cron job every 5 minutes. It ticks once and exits 0, or 1 if the tick failed (shown in the service's logs). Railway skips a run if the previous one is still going, and the script gives a tick at most 4 minutes, so ticks never overlap. It reaches the app over Railway's private network (`OUTREACH_APP_URL=http://app.railway.internal:3000`).
+  - **Locally:** `npm run outreach:scheduler` in a second terminal next to `npm run dev` loops every 5 minutes. It reads `.env.local` and needs `CRON_SECRET`. **Never run it while the Railway scheduler is on**: two tickers would both send.
 - Every 5 minutes it calls `POST localhost:3000/api/outreach/cron/tick` with `Authorization: Bearer $CRON_SECRET`. Set `OUTREACH_APP_URL` to change the address. The middleware lets this path through without a session, and the route checks the secret itself.
 - **Each tick:**
   1. **Start due runs** (`scheduler.ts`), up to 2 a tick. The claim is atomic, so a run can't start twice. A run re-gathers the New stage with the same `gather.ts` as the pop-up, skips leads unticked when it was scheduled and leads below the score threshold, and records blocked leads.
@@ -406,7 +411,8 @@ Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both 
   4. **Send what's due:** follow-ups, then queued first emails, then seed copies, with settings read again (step 3 may have paused sending).
 - Runs wait in **Ready for review**; approving and queueing stay manual until auto mode (stage 9).
 - The tick uses the service-role client (`src/lib/supabase/admin.ts`, needs `SUPABASE_SERVICE_ROLE_KEY`).
-- The laptop must be awake; anything that came due while it slept goes on wake, because the scheduler ticks once at start.
+- Run locally, the laptop must be awake; anything that came due while it slept goes on wake, because the loop ticks once at start. The Railway cron job has no such gap.
+- **Or in Docker:** `docker compose --env-file .env.local up` runs the scheduler as its own service next to the app (§14), ticking `http://app:3000`.
 - **Later:** Supabase `pg_cron` + `pg_net` call the same route.
 
 ---
@@ -530,6 +536,14 @@ The current `queries/outreach.ts` uses the browser client directly for gather an
 
 **Environment variables (`.env.local`):** `SUPABASE_SERVICE_ROLE_KEY` (scheduler only), `ANTHROPIC_API_KEY`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `CRON_SECRET`, `OBATEK_MAILING_ADDRESS`, `THEIRSTACK_API_KEY`, `SOCRATA_APP_TOKEN` (optional). `INSTANTLY_API_KEY` is no longer used.
 
+**Docker** (`Dockerfile`, `docker-compose.yml`, `.dockerignore`): one image runs the app (`node server.js`, from `output: 'standalone'`) and the scheduler (`node scripts/outreach-scheduler.mjs`). `docker compose --env-file .env.local up --build` reads `.env.local` for both; `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_APP_URL` are also build arguments, because Next.js bakes `NEXT_PUBLIC_*` into the browser code at build time, so changing them means rebuilding. `NEXT_PUBLIC_APP_URL` must be the address people open, and the mailbox redirect (`…/api/outreach/mailbox/callback`) must be registered on the Entra app for that address (§11). Supabase stays hosted: the containers hold no data, and no `.env` file goes into the image. The demo build is unaffected (it stages its own `output: 'export'` config). The app listens on `HOSTNAME=::` (IPv6 and IPv4; Railway's private network needs IPv6), and `/api/health` answers `{"ok":true}` with no database call, for deploy checks. `Dockerfile.scheduler` is a small image holding only the scheduler script, for the Railway cron service.
+
+**Railway setup** (configured in the dashboard; `railway.json` is deprecated and the newer `.railway/railway.ts` needs the Railway CLI):
+- Project `obatek-crm`, environment `production`, both services from GitHub `Dami4lola/OBATEKCRM`, branch `main`.
+- **`app`** (the name is its private hostname `app.railway.internal`): builder Dockerfile; healthcheck path `/api/health`; restart on failure; custom domain `crm.obatek.net` (a `CNAME crm` and a `TXT` record at GoDaddy, values from Railway). Variables: every key in `.env.local`, with `NEXT_PUBLIC_APP_URL=https://crm.obatek.net` and `PORT=3000`. `MAIL_TOKEN_KEY` must stay the same value or the saved mailbox login can't be decrypted. The three `NEXT_PUBLIC_*` values are build arguments, so changing one means redeploying.
+- **`scheduler`**: variables `RAILWAY_DOCKERFILE_PATH=Dockerfile.scheduler`, `CRON_SECRET=${{app.CRON_SECRET}}`, `OUTREACH_APP_URL=http://${{app.RAILWAY_PRIVATE_DOMAIN}}:3000`; Cron Schedule `*/5 * * * *`; no domain or healthcheck; build watch paths `scripts/**` and `Dockerfile.scheduler`.
+- **Outside Railway:** the Entra app has redirect `https://crm.obatek.net/api/outreach/mailbox/callback`; Supabase → Authentication → URL Configuration has Site URL `https://crm.obatek.net` and `https://crm.obatek.net/**` in the redirect list.
+
 The legacy Outlook code from the CRM template (`src/lib/oauth/outlook.ts`, `src/lib/email/outlook-sender.ts`, `/api/oauth/outlook`, `/api/email/send`, the compose and connect dialogs) was removed in 7.1: it never saved the refresh token and wrote to tables that don't exist.
 
 ---
@@ -560,6 +574,8 @@ Each week's build feeds that week's outreach (Build Plan). Stage numbers continu
 | 4 | 8.1a ✅ | `017_buying_signals.sql`; TheirStack pull, prefilter, Haiku fit check, leads in New tagged with the signal; Buying signals dialog; signals on the lead sheet | A Pull now with 10 posts puts fit ones in New with a reason, and skips the rest with one |
 | 4 | 8.1b ✅ | Signal leads audited automatically; `job_post` hook and a LinkedIn note drafted with the email; a daily "Buying signals" run for one-click review | 10–20 signal emails a day approved; 10%+ reply rate |
 | 4 | 8.2 ✅ | Results page (§12) | Meetings per 100 contacted shown by channel, for any dates |
+| 4 | 8.5 ✅ | `023_home_care.sql`; `home_care` vertical (keywords, template, copy guidance, call question, staff range 2–50, target vertical) | Home care leads imported from Lusha land as `home_care`, score the target-vertical point and draft with the home care email |
+| 4 | 8.4 ✅ | `022_casl_confirmed.sql`; CASL basis confirmed tick on the lead and on imports (select all, untick rows); import dialog scrolls and shows every row; Docker image + compose (app and scheduler) | A ticked Canadian Lusha lead passes Gather with no site check; `docker compose --env-file .env.local up --build` serves the app and the scheduler ticks |
 | 4 | 8.3 ✅ | Browser demo (`demo/`) for screen shares and the website | Every button works or says it's off, and nothing leaves the page |
 | 4 | 8 | Jo case study; audit PDF offer | Case study and audit PDF ready to send |
 | 5+ | 9 | Learning loop + auto mode | Winners appear in the prompt; the toggle unlocks after 14 days + thresholds |
@@ -591,6 +607,8 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 ---
 
 ## 17. Open questions (from the Build Plan) and notes
+
+**Shared model:** the design for many clients in one deployment (rows and pages per client, per-client customization, invites, plans and keys) is in `SHARED_MODEL_PLAN.md`.
 
 - Small-client bundle price per month
 - Score threshold (placeholder: 5)

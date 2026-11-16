@@ -1,13 +1,15 @@
 'use client'
 
-import type { Control } from 'react-hook-form'
+import { useWatch, type Control } from 'react-hook-form'
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -28,6 +30,8 @@ interface LeadOutreachFieldsProps {
 
 // Fields the outreach engine uses: site audit, CASL check and copywriting
 export function LeadOutreachFields({ control }: LeadOutreachFieldsProps) {
+  const caslConfirmed = useWatch({ control, name: 'casl_confirmed' })
+
   return (
     <div className="space-y-4 border-t pt-4">
       <h4 className="text-sm font-medium">Outreach details</h4>
@@ -192,6 +196,45 @@ export function LeadOutreachFields({ control }: LeadOutreachFieldsProps) {
           )}
         />
       </div>
+
+      <FormField
+        control={control}
+        name="casl_confirmed"
+        render={({ field }) => (
+          <FormItem className="flex items-start gap-2 space-y-0">
+            <FormControl>
+              <Checkbox
+                className="mt-0.5"
+                checked={field.value ?? false}
+                onCheckedChange={(checked) => field.onChange(checked === true)}
+              />
+            </FormControl>
+            <div className="space-y-1">
+              <FormLabel className="font-normal">CASL basis confirmed</FormLabel>
+              <FormDescription>
+                Tick when you know the business published this address or agreed to be contacted.
+                Passes the CASL check without a site check.
+              </FormDescription>
+            </div>
+          </FormItem>
+        )}
+      />
+
+      {caslConfirmed && (
+        <FormField
+          control={control}
+          name="casl_note"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>CASL note</FormLabel>
+              <FormControl>
+                <Input placeholder="Where it was published, or who agreed" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      )}
     </div>
   )
 }

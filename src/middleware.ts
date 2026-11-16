@@ -41,7 +41,8 @@ export async function middleware(request: NextRequest) {
 
   // /reset-password is not public: the reset email's link signs the user in first.
   // The scheduler's cron route has no session; it checks CRON_SECRET itself.
-  const publicPaths = ['/login', '/signup', '/forgot-password', '/api/auth/callback', '/api/outreach/cron/']
+  // /api/health answers Railway's deploy check, which has no session either.
+  const publicPaths = ['/login', '/signup', '/forgot-password', '/api/auth/callback', '/api/outreach/cron/', '/api/health']
   const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   // Redirect to login if not authenticated and trying to access protected route

@@ -123,6 +123,8 @@ export function leadBrief({ lead, audit, hook, offer, examples, revision, signal
       ? 'Business type: marketing agency'
       : lead.vertical === 'property'
         ? 'Business type: property management or real estate brokerage'
+        : lead.vertical === 'home_care'
+        ? 'Business type: home care agency (non-medical senior care)'
         : lead.vertical
         ? `Trade: ${lead.vertical.replace(/_/g, ' ')}`
         : null,

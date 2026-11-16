@@ -51,11 +51,17 @@ export function checkLead(lead: Lead, ctx: ComplianceContext): GatherWarning[] {
 
   // CASL: Canadian addresses may only be emailed when the business published
   // the address itself. Without a country we can't tell, so block until set.
-  if (email && lead.email_source !== 'website' && !OWN_DOMAINS.has(emailDomain(email) ?? '')) {
+  // A hand-ticked "CASL basis confirmed" counts the same as a website email.
+  if (
+    email &&
+    lead.email_source !== 'website' &&
+    !lead.casl_confirmed_at &&
+    !OWN_DOMAINS.has(emailDomain(email) ?? '')
+  ) {
     if (lead.country === 'CA') {
       warnings.push({
         code: 'casl',
-        message: 'Canadian email not from their website (CASL)',
+        message: 'Canadian email not from their website (CASL). Tick "CASL basis confirmed" on the lead if you know it is allowed',
         blocking: true,
       })
     } else if (!lead.country) {

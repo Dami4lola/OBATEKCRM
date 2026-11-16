@@ -1,0 +1,29 @@
+# The CRM app and the outreach scheduler from one image (OUTREACH_PLAN.md §14).
+#   docker compose up --build
+# Both read .env.local. The three NEXT_PUBLIC_* values are also needed at
+# build time; compose reads them from .env.local through --env-file:
+#   docker compose --env-file .env.local up --build
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?set in .env.local}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set in .env.local}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    image: obatek-crm
+    env_file: .env.local
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  scheduler:
+    image: obatek-crm
+    command: ["node", "scripts/outreach-scheduler.mjs"]
+    env_file: .env.local
+    environment:
+      OUTREACH_APP_URL: http://app:3000
+    depends_on:
+      - app
+    restart: unless-stopped

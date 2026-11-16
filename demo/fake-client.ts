@@ -28,7 +28,7 @@ interface Result {
 }
 
 const INSERT_DEFAULTS: Record<string, Row> = {
-  leads: { signals: {}, position_index: 0 },
+  leads: { signals: {}, position_index: 0, casl_confirmed_at: null, casl_confirmed_by: null, casl_note: null },
   outreach_emails: { status: 'draft', steps: [], audit: {}, open_count: 0, is_example: false },
   outreach_runs: { summary: {} },
   tasks: { status: 'pending', kind: 'general' },

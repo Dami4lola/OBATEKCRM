@@ -7,6 +7,14 @@ import type { Lead, LeadInsert, LeadUpdate } from '@/types/database'
 
 const KEY_PAGE_SIZE = 1000
 
+// The signed-in user's id, for records like who ticked "CASL basis confirmed"
+export async function fetchCurrentUserId(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await createClient().auth.getUser()
+  return user?.id ?? null
+}
+
 // Email, name and company of every lead, for the import's duplicate check.
 // Read a page at a time: the API returns 1,000 rows at most.
 export async function fetchLeadKeys(): Promise<LeadKey[]> {

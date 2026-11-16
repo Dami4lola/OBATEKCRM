@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2 } from 'lucide-react'
 import { ImportFileUpload } from './import-file-upload'
 import { ImportColumnMapper } from './import-column-mapper'
@@ -25,7 +26,7 @@ import { ImportPreviewTable } from './import-preview-table'
 import { parseFile } from '@/lib/import/parsers'
 import { autoMapColumns, applyMapping } from '@/lib/import/column-mapper'
 import { validateImportRow } from '@/lib/validations/import'
-import { fetchLeadKeys, useBulkCreateLeads } from '@/lib/queries/leads'
+import { fetchCurrentUserId, fetchLeadKeys, useBulkCreateLeads } from '@/lib/queries/leads'
 import { markDuplicates } from '@/lib/import/duplicates'
 import { contactNameFor, MIN_CONTACT_FIELDS } from '@/lib/import/contact-rule'
 import { useStages } from '@/lib/queries/stages'
@@ -47,6 +48,8 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
   const [validatedRows, setValidatedRows] = useState<ParsedRow[]>([])
   const [selectedStageId, setSelectedStageId] = useState<string>('')
   const [emailSource, setEmailSource] = useState<EmailSource | ''>('')
+  // Row indexes ticked "CASL basis confirmed"
+  const [caslTicked, setCaslTicked] = useState<Set<number>>(new Set())
   const [isLoading, setIsLoading] = useState(false)
 
   const { data: stages = [] } = useStages()
@@ -122,10 +125,21 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
     }
     const skipped = checked.filter(row => row.duplicate).length
 
-    const validLeads = checked
-      .filter(row => row.isValid && !row.duplicate)
+    const importRows = checked.filter(row => row.isValid && !row.duplicate)
+    let caslBy: string | null = null
+    if (importRows.some(row => caslTicked.has(row.rowIndex))) {
+      try {
+        caslBy = await fetchCurrentUserId()
+      } catch (error) {
+        console.error('User lookup error:', error)
+      }
+    }
+    const caslAt = new Date().toISOString()
+
+    const validLeads = importRows
       .map(row => {
         const data = row.data as Partial<LeadImportFields>
+        const casl = caslTicked.has(row.rowIndex)
         return {
           contact_name: contactNameFor(data),
           company_name: data.company_name ?? null,
@@ -143,6 +157,8 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
           staff_size: data.staff_size ?? null,
           linkedin_url: data.linkedin_url ?? null,
           email_source: data.email ? emailSource || null : null,
+          casl_confirmed_at: casl ? caslAt : null,
+          casl_confirmed_by: casl ? caslBy : null,
         }
       })
 
@@ -163,7 +179,7 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
       toast.error('Failed to import leads')
       console.error('Import error:', error)
     }
-  }, [selectedStageId, validatedRows, emailSource, bulkCreate])
+  }, [selectedStageId, validatedRows, emailSource, caslTicked, bulkCreate])
 
   const handleClose = useCallback(() => {
     setStep('upload')
@@ -172,6 +188,7 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
     setValidatedRows([])
     setSelectedStageId('')
     setEmailSource('')
+    setCaslTicked(new Set())
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -185,11 +202,25 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
     }
   }, [step])
 
-  const validCount = validatedRows.filter(r => r.isValid && !r.duplicate).length
+  const importable = validatedRows.filter(r => r.isValid && !r.duplicate)
+  const validCount = importable.length
+  const caslCount = importable.filter(r => caslTicked.has(r.rowIndex)).length
+  const caslAll = validCount > 0 && caslCount === validCount
+
+  const toggleCaslAll = (checked: boolean) =>
+    setCaslTicked(checked ? new Set(importable.map(r => r.rowIndex)) : new Set())
+
+  const toggleCaslRow = (rowIndex: number, checked: boolean) =>
+    setCaslTicked(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(rowIndex)
+      else next.delete(rowIndex)
+      return next
+    })
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {step === 'upload' && 'Import Leads'}
@@ -248,10 +279,38 @@ export function ImportLeadsDialog({ open, onOpenChange }: ImportLeadsDialogProps
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Outreach only auto-emails Canadian leads whose email came from their own website (CASL).
+                  Outreach only auto-emails Canadian leads whose email came from their own website (CASL),
+                  or that you tick below.
                 </p>
               </div>
-              <ImportPreviewTable rows={validatedRows} mappings={mappings} />
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="import-casl-all"
+                  className="mt-0.5"
+                  checked={caslAll}
+                  disabled={validCount === 0}
+                  onCheckedChange={(checked) => toggleCaslAll(checked === true)}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="import-casl-all" className="font-normal">
+                    CASL basis confirmed for these leads
+                    {caslCount > 0 && (
+                      <span className="text-muted-foreground"> ({caslCount} of {validCount})</span>
+                    )}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Tick when you know these addresses were published by the businesses or they agreed to
+                    be contacted. Untick any row below that isn&apos;t.
+                  </p>
+                </div>
+              </div>
+              <ImportPreviewTable
+                rows={validatedRows}
+                mappings={mappings}
+                caslTicked={caslTicked}
+                onToggleCasl={toggleCaslRow}
+                onToggleCaslAll={toggleCaslAll}
+              />
             </div>
           )}
         </div>

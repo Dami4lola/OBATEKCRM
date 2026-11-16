@@ -22,6 +22,8 @@ Second target, run alongside: marketing agencies with 2–20 staff in the Easter
 
 Third target, same states: small property management companies and real estate brokerages (2–20 staff). Calls, rental and listing inquiries and maintenance requests wait while the team is out at showings, and leads live in inboxes and spreadsheets. The offer: a simple CRM for every lead, tenant and owner, instant replies to inquiries, and an AI receptionist for after-hours calls.
 
+Fourth target, Canada and the US: non-medical senior home care agencies (personal care, companionship, caregivers sent to clients' homes). Families call about care for a parent in the evenings and at weekends, referrals need a quick reply, and the office juggles calls while scheduling caregivers. The offer: a simple CRM for every family inquiry and referral, instant replies, and an AI receptionist for after-hours calls from families and caregivers.
+
 | Signal | Where it comes from | Why it matters |
 | --- | --- | --- |
 | Hiring an office admin, dispatcher, appointment setter, SDR or CRM admin | Job posts via TheirStack's API (no scraping) | Coordination pain right now |
@@ -168,5 +170,5 @@ Open questions:
 - [ ] Score threshold for entering outreach
 - [ ] Which job boards feed the hiring signal
 - [ ] Places API and Claude API cost per qualified lead
-- [ ] Whether self-hosting is offered from the start or only on request
+- [x] Whether self-hosting is offered from the start or only on request: a Docker image (app + scheduler) exists; offered on request
 - [ ] Which CRM the first bigger prospect runs
