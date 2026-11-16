@@ -1,17 +1,22 @@
-// Runs the outreach scheduler on this laptop (OUTREACH_PLAN.md §11).
-//   npm run outreach:scheduler   (with `npm run dev` running in another terminal)
-// Every 5 minutes it calls the tick route, which starts due runs, writes
-// drafts, reads replies and bounces from the mailbox, and sends what's due.
-// It ticks once at start, so anything that came due while the laptop slept
-// goes on wake.
+// Runs the outreach scheduler (OUTREACH_PLAN.md §11). It calls the tick
+// route, which starts due runs, writes drafts, reads replies and bounces
+// from the mailbox, and sends what's due.
+//   node outreach-scheduler.mjs          loop: tick now, then every 5 minutes
+//                                        (npm run outreach:scheduler, next to npm run dev)
+//   node outreach-scheduler.mjs --once   one tick, then exit 0 on success or 1
+//                                        on failure (Railway cron, every 5 minutes)
+// Looping, it ticks once at start, so anything that came due while the
+// laptop slept goes on wake.
 
 const INTERVAL_MS = 5 * 60_000
 // A tick drafts a few emails with Claude and sends a few; give it time
 const TIMEOUT_MS = 4 * 60_000
 
+const once = process.argv.includes('--once')
+
 const secret = process.env.CRON_SECRET
 if (!secret) {
-  console.error('CRON_SECRET is not set. Add it to .env.local (any long random string) and restart.')
+  console.error('CRON_SECRET is not set. Add it to .env.local (any long random string), or to the service variables on Railway, and restart.')
   process.exit(1)
 }
 const appUrl = (process.env.OUTREACH_APP_URL || 'http://localhost:3000').replace(/\/$/, '')
@@ -76,6 +81,7 @@ function describe(summary) {
   return parts.length ? parts.join(' · ') : 'nothing to do'
 }
 
+// True when the tick route answered OK
 async function tick() {
   const time = new Date().toLocaleTimeString()
   try {
@@ -87,12 +93,14 @@ async function tick() {
     const body = await response.json().catch(() => ({}))
     if (!response.ok) {
       console.error(`[${time}] tick failed (${response.status}): ${body.error ?? 'no detail'}`)
-      if (response.status === 401) console.error('  CRON_SECRET in .env.local must match the one the app started with. Restart npm run dev after changing it.')
-      return
+      if (response.status === 401) console.error('  CRON_SECRET must match the one the app started with. Restart the app after changing it.')
+      return false
     }
     console.log(`[${time}] ${describe(body)}`)
+    return true
   } catch (error) {
-    console.error(`[${time}] could not reach ${tickUrl}: ${error.message}. Is npm run dev running?`)
+    console.error(`[${time}] could not reach ${tickUrl}: ${error.message}. Is the app running at OUTREACH_APP_URL (default http://localhost:3000)?`)
+    return false
   }
 }
 
@@ -102,5 +110,9 @@ async function loop() {
   setTimeout(loop, INTERVAL_MS)
 }
 
-console.log(`Outreach scheduler: ticking ${tickUrl} every ${INTERVAL_MS / 60_000} minutes. Ctrl+C to stop.`)
-loop()
+if (once) {
+  tick().then((ok) => process.exit(ok ? 0 : 1))
+} else {
+  console.log(`Outreach scheduler: ticking ${tickUrl} every ${INTERVAL_MS / 60_000} minutes. Ctrl+C to stop.`)
+  loop()
+}

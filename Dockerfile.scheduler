@@ -1,0 +1,8 @@
+# The 5-minute scheduler as a Railway cron job (OUTREACH_PLAN.md §11, §14).
+# The script has no dependencies, so this image skips the Next.js build.
+# Railway: RAILWAY_DOCKERFILE_PATH=Dockerfile.scheduler, Cron Schedule */5 * * * *
+FROM node:22-alpine
+WORKDIR /app
+COPY scripts/outreach-scheduler.mjs ./scripts/outreach-scheduler.mjs
+USER node
+CMD ["node", "scripts/outreach-scheduler.mjs", "--once"]

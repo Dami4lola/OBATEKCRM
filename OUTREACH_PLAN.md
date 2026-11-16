@@ -12,7 +12,7 @@ The engine works in four steps:
 
 The engine starts in **manual mode**: you approve every email. The best performers become the examples Claude learns from. Once results hold up, you switch to **auto mode**.
 
-**Stack:** Next.js 16 (App Router) · TypeScript · Supabase · React Query · shadcn/ui, all in this repo. It runs on **Vercel** at `obatekcrm.vercel.app` (deployed from GitHub `main`), locally with `npm run dev` for development, and in Docker (§14).
+**Stack:** Next.js 16 (App Router) · TypeScript · Supabase · React Query · shadcn/ui, all in this repo. It is moving from **Vercel** (`obatekcrm.vercel.app`) to **Railway** at `crm.obatek.net`: two services built from GitHub `main`, the app and a 5-minute cron scheduler (§11, §14). Vercel stays up until Railway is verified, then is removed. Locally it runs with `npm run dev`, or in Docker (§14).
 **Database:** `supabase/migrations/002_outreach.sql` (applied), `003_team_access.sql` (§16), `004_sourcing.sql` (§4) and `005_audit.sql` (§5). Types are in `src/types/database.ts`.
 
 **Starting ICP:** handyman and home-repair businesses with 2–10 staff that run jobs out of spreadsheets and texts. Bigger HVAC and electrical firms come later.
@@ -397,8 +397,10 @@ Sending runs in-house from the **getobatek.com Microsoft 365 mailbox** through M
 ### Instantly (stages 6–7, retired)
 Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both were replaced in 7.1–7.3 before any real sends; the `instantly_*` columns stay for history and the settings were removed in 014. Reused from that work: the scheduler, gather, drafting, the reply classifier, suppression and auto-pause.
 
-### Scheduler (local, built)
-- `scripts/outreach-scheduler.mjs`, run with `npm run outreach:scheduler` in a second terminal next to `npm run dev`. It reads `.env.local` and needs `CRON_SECRET`.
+### Scheduler (built)
+- `scripts/outreach-scheduler.mjs` calls the tick route. Two modes:
+  - **On Railway (production):** the `scheduler` service runs `node scripts/outreach-scheduler.mjs --once` as a cron job every 5 minutes. It ticks once and exits 0, or 1 if the tick failed (shown in the service's logs). Railway skips a run if the previous one is still going, and the script gives a tick at most 4 minutes, so ticks never overlap. It reaches the app over Railway's private network (`OUTREACH_APP_URL=http://app.railway.internal:3000`).
+  - **Locally:** `npm run outreach:scheduler` in a second terminal next to `npm run dev` loops every 5 minutes. It reads `.env.local` and needs `CRON_SECRET`. **Never run it while the Railway scheduler is on**: two tickers would both send.
 - Every 5 minutes it calls `POST localhost:3000/api/outreach/cron/tick` with `Authorization: Bearer $CRON_SECRET`. Set `OUTREACH_APP_URL` to change the address. The middleware lets this path through without a session, and the route checks the secret itself.
 - **Each tick:**
   1. **Start due runs** (`scheduler.ts`), up to 2 a tick. The claim is atomic, so a run can't start twice. A run re-gathers the New stage with the same `gather.ts` as the pop-up, skips leads unticked when it was scheduled and leads below the score threshold, and records blocked leads.
@@ -408,7 +410,7 @@ Stage 6 added leads to an Instantly campaign and stage 7 polled its stats. Both 
   4. **Send what's due:** follow-ups, then queued first emails, then seed copies, with settings read again (step 3 may have paused sending).
 - Runs wait in **Ready for review**; approving and queueing stay manual until auto mode (stage 9).
 - The tick uses the service-role client (`src/lib/supabase/admin.ts`, needs `SUPABASE_SERVICE_ROLE_KEY`).
-- The laptop must be awake; anything that came due while it slept goes on wake, because the scheduler ticks once at start.
+- Run locally, the laptop must be awake; anything that came due while it slept goes on wake, because the loop ticks once at start. The Railway cron job has no such gap.
 - **Or in Docker:** `docker compose --env-file .env.local up` runs the scheduler as its own service next to the app (§14), ticking `http://app:3000`.
 - **Later:** Supabase `pg_cron` + `pg_net` call the same route.
 
@@ -533,7 +535,13 @@ The current `queries/outreach.ts` uses the browser client directly for gather an
 
 **Environment variables (`.env.local`):** `SUPABASE_SERVICE_ROLE_KEY` (scheduler only), `ANTHROPIC_API_KEY`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `MAIL_TOKEN_KEY`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `CRON_SECRET`, `OBATEK_MAILING_ADDRESS`, `THEIRSTACK_API_KEY`, `SOCRATA_APP_TOKEN` (optional). `INSTANTLY_API_KEY` is no longer used.
 
-**Docker** (`Dockerfile`, `docker-compose.yml`, `.dockerignore`): one image runs the app (`node server.js`, from `output: 'standalone'`) and the scheduler (`node scripts/outreach-scheduler.mjs`). `docker compose --env-file .env.local up --build` reads `.env.local` for both; `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_APP_URL` are also build arguments, because Next.js bakes `NEXT_PUBLIC_*` into the browser code at build time, so changing them means rebuilding. `NEXT_PUBLIC_APP_URL` must be the address people open, and the mailbox redirect (`…/api/outreach/mailbox/callback`) must be registered on the Entra app for that address (§11). Supabase stays hosted: the containers hold no data, and no `.env` file goes into the image. The demo build is unaffected (it stages its own `output: 'export'` config).
+**Docker** (`Dockerfile`, `docker-compose.yml`, `.dockerignore`): one image runs the app (`node server.js`, from `output: 'standalone'`) and the scheduler (`node scripts/outreach-scheduler.mjs`). `docker compose --env-file .env.local up --build` reads `.env.local` for both; `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_APP_URL` are also build arguments, because Next.js bakes `NEXT_PUBLIC_*` into the browser code at build time, so changing them means rebuilding. `NEXT_PUBLIC_APP_URL` must be the address people open, and the mailbox redirect (`…/api/outreach/mailbox/callback`) must be registered on the Entra app for that address (§11). Supabase stays hosted: the containers hold no data, and no `.env` file goes into the image. The demo build is unaffected (it stages its own `output: 'export'` config). The app listens on `HOSTNAME=::` (IPv6 and IPv4; Railway's private network needs IPv6), and `/api/health` answers `{"ok":true}` with no database call, for deploy checks. `Dockerfile.scheduler` is a small image holding only the scheduler script, for the Railway cron service.
+
+**Railway setup** (configured in the dashboard; `railway.json` is deprecated and the newer `.railway/railway.ts` needs the Railway CLI):
+- Project `obatek-crm`, environment `production`, both services from GitHub `Dami4lola/OBATEKCRM`, branch `main`.
+- **`app`** (the name is its private hostname `app.railway.internal`): builder Dockerfile; healthcheck path `/api/health`; restart on failure; custom domain `crm.obatek.net` (a `CNAME crm` and a `TXT` record at GoDaddy, values from Railway). Variables: every key in `.env.local`, with `NEXT_PUBLIC_APP_URL=https://crm.obatek.net` and `PORT=3000`. `MAIL_TOKEN_KEY` must stay the same value or the saved mailbox login can't be decrypted. The three `NEXT_PUBLIC_*` values are build arguments, so changing one means redeploying.
+- **`scheduler`**: variables `RAILWAY_DOCKERFILE_PATH=Dockerfile.scheduler`, `CRON_SECRET=${{app.CRON_SECRET}}`, `OUTREACH_APP_URL=http://${{app.RAILWAY_PRIVATE_DOMAIN}}:3000`; Cron Schedule `*/5 * * * *`; no domain or healthcheck; build watch paths `scripts/**` and `Dockerfile.scheduler`.
+- **Outside Railway:** the Entra app has redirect `https://crm.obatek.net/api/outreach/mailbox/callback`; Supabase → Authentication → URL Configuration has Site URL `https://crm.obatek.net` and `https://crm.obatek.net/**` in the redirect list.
 
 The legacy Outlook code from the CRM template (`src/lib/oauth/outlook.ts`, `src/lib/email/outlook-sender.ts`, `/api/oauth/outlook`, `/api/email/send`, the compose and connect dialogs) was removed in 7.1: it never saved the refresh token and wrote to tables that don't exist.
 
@@ -597,6 +605,8 @@ Each item lists the build stage that must meet it. `/security-review` runs befor
 ---
 
 ## 17. Open questions (from the Build Plan) and notes
+
+**Shared model:** the design for many clients in one deployment (rows and pages per client, per-client customization, invites, plans and keys) is in `SHARED_MODEL_PLAN.md`.
 
 - Small-client bundle price per month
 - Score threshold (placeholder: 5)

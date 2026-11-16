@@ -26,9 +26,10 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+# HOSTNAME=:: listens on IPv6 and IPv4; Railway's private network needs IPv6
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    HOSTNAME=0.0.0.0 \
+    HOSTNAME=:: \
     PORT=3000
 RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
