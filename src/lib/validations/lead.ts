@@ -22,6 +22,7 @@ export const VERTICALS = [
   'car_dealer',
   'agency',
   'property',
+  'home_care',
 ]
 
 export const leadSchema = z.object({
@@ -107,6 +108,9 @@ const VERTICAL_KEYWORDS: [string, string[]][] = [
   ['plumbing', ['plumb']],
   ['electrical', ['electric']],
   ['roofing', ['roof']],
+  // Non-medical senior home care, before cleaning so "Home Care &
+  // Housekeeping" lands here; Lusha files most under "Home Health Care"
+  ['home_care', ['home care', 'homecare', 'home-care', 'home health', 'senior care', 'elder care', 'eldercare', 'elderly care', 'caregiver', 'personal support', 'companion care']],
   ['cleaning', ['clean', 'janitor', 'maid']],
   ['handyman', ['handyman', 'home repair', 'home improvement', 'property maintenance']],
   ['landscaping', ['landscap', 'lawn']],

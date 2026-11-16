@@ -103,7 +103,7 @@ export interface ScoreWeights {
   target_vertical: number
 }
 
-// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql, 017_buying_signals.sql, 018_property.sql and 019_lead_sources.sql
+// Mirrors the seed rows in supabase/migrations/002_outreach.sql, 004_sourcing.sql, 005_audit.sql, 007_cleanup_rules.sql, 008_company_size.sql, 009_write_step.sql, 010_send.sql, 012_car_dealer_template.sql, 013_scheduler_stats.sql, 014_mailbox.sql, 015_agencies.sql, 017_buying_signals.sql, 018_property.sql, 019_lead_sources.sql and 023_home_care.sql
 export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   source_stage_name: 'New',
   target_stage_name: 'Contacted',
@@ -118,7 +118,7 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   offer_description: '',
   score_weights: { pain_signal: 3, staff_size: 2, owner_reachable: 2, target_vertical: 1 },
   score_threshold: 5,
-  target_verticals: ['handyman', 'agency', 'car_dealer', 'property'],
+  target_verticals: ['handyman', 'agency', 'car_dealer', 'property', 'home_care'],
   call_list_size: 3,
   auto_unlock_min_days: 14,
   places_max_results: 60,
@@ -144,7 +144,8 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   warmup_started_at: null,
   seed_addresses: [],
   auto_unlock_reply_rate: 0.05,
-  staff_range: { default: [2, 15], agency: [2, 20], property: [2, 20] },
+  // Home care counts caregivers as staff, so its range is wider
+  staff_range: { default: [2, 15], agency: [2, 20], property: [2, 20], home_care: [2, 50] },
   signal_roles: [
     'appointment setter',
     'sales development representative',

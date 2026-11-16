@@ -2,7 +2,7 @@ import type { TemplateStep } from './settings'
 
 // The default email wording and sender, kept apart from the other settings
 // so the public demo can swap this one file (demo/build.mjs).
-// Mirrors 009_write_step.sql, 012_car_dealer_template.sql, 015_agencies.sql and 018_property.sql; edit there (or in the settings table)
+// Mirrors 009_write_step.sql, 012_car_dealer_template.sql, 015_agencies.sql, 018_property.sql and 023_home_care.sql; edit there (or in the settings table)
 export const DEFAULT_EMAIL_TEMPLATES: Record<string, TemplateStep[]> = {
   default: [
     {
@@ -65,6 +65,23 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<string, TemplateStep[]> = {
       step: 2,
       subject: 're: {{subject}}',
       body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If an inquiry or a maintenance call ever slipped through while the team was out at a showing, the free audit would show where {{company}} loses them. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
+    },
+    {
+      step: 3,
+      subject: 're: {{subject}}',
+      body: "Hi {{first_name}},\n\nI'll leave it here. If it's ever useful, reply \"audit\" and I'll put it together for {{company}}.\n\n{{sender_first_name}}",
+    },
+  ],
+  home_care: [
+    {
+      step: 1,
+      subject: '{{subject}}',
+      body: "Hi {{first_name}},\n\n{{opener}}\n\nI'm {{sender_first_name}}. I run OBATEK, a small automation shop. For home care agencies like {{company}}, we set up a simple CRM that keeps every family inquiry and referral in one place, instant replies so families hear back right away, and an AI receptionist for after-hours calls from families and caregivers.\n\nWould a free one-page audit of how {{company}} handles calls and inquiries be useful?\n\n{{sender_name}}",
+    },
+    {
+      step: 2,
+      subject: 're: {{subject}}',
+      body: "Hi {{first_name}},\n\nFollowing up in case my last note got buried. If a family ever called about care for a parent in the evening and nobody picked up, the free audit would show where {{company}} loses those calls. It takes me about 20 minutes and you keep it either way.\n\nWorth sending over?\n\n{{sender_first_name}}",
     },
     {
       step: 3,

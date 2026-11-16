@@ -21,6 +21,10 @@ const AGENCY_QUESTION = 'When someone fills in your contact form at 9pm, what ha
 const PROPERTY_QUESTION =
   'When a tenant calls about a leak at night, or a buyer inquiry comes in during a showing, who picks up?'
 
+// Home care: families calling about a parent's care after hours
+const HOME_CARE_QUESTION =
+  'When a family calls on a Sunday evening about care for their mom or dad, who picks up?'
+
 export const CALL_OUTCOMES = [
   { value: 'no_answer', label: 'No answer' },
   { value: 'voicemail', label: 'Left voicemail' },
@@ -48,6 +52,7 @@ type BriefLead = Pick<
 export function callQuestion(painSignals: PainSignal[], vertical?: string | null): string {
   if (vertical === 'agency') return AGENCY_QUESTION
   if (vertical === 'property') return PROPERTY_QUESTION
+  if (vertical === 'home_care') return HOME_CARE_QUESTION
   return CALL_QUESTIONS.find(([signal]) => painSignals.includes(signal))?.[1] ?? DEFAULT_QUESTION
 }
 
