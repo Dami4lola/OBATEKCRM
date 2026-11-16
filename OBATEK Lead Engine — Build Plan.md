@@ -168,5 +168,5 @@ Open questions:
 - [ ] Score threshold for entering outreach
 - [ ] Which job boards feed the hiring signal
 - [ ] Places API and Claude API cost per qualified lead
-- [ ] Whether self-hosting is offered from the start or only on request
+- [x] Whether self-hosting is offered from the start or only on request: a Docker image (app + scheduler) exists; offered on request
 - [ ] Which CRM the first bigger prospect runs

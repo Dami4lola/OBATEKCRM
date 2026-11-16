@@ -44,14 +44,20 @@ export const leadSchema = z.object({
   staff_size: z.number().int().min(1).nullable().optional(),
   linkedin_url: z.union([z.string().url('Invalid URL'), z.literal('')]).optional(),
   email_source: z.enum(['website', 'lusha', 'manual', 'referral', 'other']).nullable().optional(),
+  // Not a column: sets casl_confirmed_at/_by through caslUpdates()
+  casl_confirmed: z.boolean().optional(),
+  casl_note: z.string().optional(),
 })
 
 export type LeadFormData = z.infer<typeof leadSchema>
 
 // Form values use '' for empty text fields; the database wants null
 export function leadFormToRow(data: LeadFormData) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { casl_confirmed, ...rest } = data
   return {
-    ...data,
+    ...rest,
+    casl_note: data.casl_confirmed ? data.casl_note || null : null,
     value: data.value ?? null,
     payment_terms: data.payment_terms ?? null,
     email: data.email || null,
@@ -68,6 +74,18 @@ export function leadFormToRow(data: LeadFormData) {
     linkedin_url: data.linkedin_url || null,
     email_source: data.email_source ?? null,
   }
+}
+
+// The CASL tick's record. A new tick saves now and who ticked it; keeping
+// an existing tick keeps the original date and person; unticking clears it.
+export function caslUpdates(
+  ticked: boolean | undefined,
+  confirmedAt: string | null | undefined,
+  userId: string | null
+): { casl_confirmed_at?: string | null; casl_confirmed_by?: string | null } {
+  if (!ticked) return { casl_confirmed_at: null, casl_confirmed_by: null }
+  if (confirmedAt) return {}
+  return { casl_confirmed_at: new Date().toISOString(), casl_confirmed_by: userId }
 }
 
 const COUNTRY_NAMES: Record<string, string> = {

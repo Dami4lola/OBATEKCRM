@@ -29,8 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useCreateLead } from '@/lib/queries/leads'
-import type { LeadFormData } from '@/lib/validations/lead'
+import { useCreateLead, fetchCurrentUserId } from '@/lib/queries/leads'
+import { caslUpdates, type LeadFormData } from '@/lib/validations/lead'
 import { newLeadSchema, newLeadToRow } from '@/lib/validations/new-lead'
 import { LeadOutreachFields } from './lead-outreach-fields'
 
@@ -67,6 +67,8 @@ export function LeadFormDialog({
       staff_size: null,
       linkedin_url: '',
       email_source: null,
+      casl_confirmed: false,
+      casl_note: '',
     },
   })
 
@@ -79,7 +81,11 @@ export function LeadFormDialog({
 
   const onSubmit = async (data: LeadFormData) => {
     try {
-      await createLead.mutateAsync(newLeadToRow(data))
+      const userId = data.casl_confirmed ? await fetchCurrentUserId() : null
+      await createLead.mutateAsync({
+        ...newLeadToRow(data),
+        ...caslUpdates(data.casl_confirmed, null, userId),
+      })
       toast.success('Lead created successfully')
       form.reset()
       onOpenChange(false)

@@ -163,6 +163,9 @@ export interface Database {
           signals: Json
           audit: Json | null
           audited_at: string | null
+          casl_confirmed_at: string | null
+          casl_confirmed_by: string | null
+          casl_note: string | null
           position_index: number
           created_at: string
           updated_at: string
@@ -195,6 +198,9 @@ export interface Database {
           signals?: Json
           audit?: Json | null
           audited_at?: string | null
+          casl_confirmed_at?: string | null
+          casl_confirmed_by?: string | null
+          casl_note?: string | null
           position_index?: number
           created_at?: string
           updated_at?: string
@@ -227,6 +233,9 @@ export interface Database {
           signals?: Json
           audit?: Json | null
           audited_at?: string | null
+          casl_confirmed_at?: string | null
+          casl_confirmed_by?: string | null
+          casl_note?: string | null
           position_index?: number
           created_at?: string
           updated_at?: string
