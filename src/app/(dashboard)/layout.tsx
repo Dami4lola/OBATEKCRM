@@ -17,8 +17,11 @@ async function getTeamAccess() {
   if (!user) return { allowed: true, email: null }
 
   const { data: isMember, error } = await supabase.rpc('is_team_member')
-  // Before 003_team_access.sql is applied the function doesn't exist yet
-  if (error) return { allowed: true, email: user.email ?? null }
+  // Fail closed: if the check itself errors, don't show the app
+  if (error) {
+    console.error('is_team_member check failed:', error.message)
+    return { allowed: false, email: user.email ?? null }
+  }
   return { allowed: isMember === true, email: user.email ?? null }
 }
 

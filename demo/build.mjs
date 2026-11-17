@@ -20,7 +20,7 @@ const LEFT_OUT = [
   'src/app/(auth)',
   'src/app/(dashboard)/settings',
   'src/app/(dashboard)/layout.tsx',
-  'src/middleware.ts',
+  'src/proxy.ts',
 ].map((path) => join(root, path))
 
 function copyProject() {
@@ -93,7 +93,7 @@ function build() {
   // Only what the build needs: no key in this shell can reach the output
   const env = { PATH: process.env.PATH, HOME: process.env.HOME, NEXT_TELEMETRY_DISABLED: '1' }
   const next = join(root, 'node_modules/.bin/next')
-  // Webpack, because Turbopack would look for the real src/middleware.ts from
+  // Webpack, because Turbopack would look for the real src/proxy.ts from
   // the project root and compile it into this build
   const result = spawnSync(next, ['build', '--webpack'], { cwd: stage, env, stdio: 'inherit' })
   if (result.status !== 0) throw new Error('The demo build failed')
