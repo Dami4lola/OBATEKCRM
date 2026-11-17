@@ -81,26 +81,42 @@ function describe(summary) {
   return parts.length ? parts.join(' · ') : 'nothing to do'
 }
 
+// Railway's private network can take a few seconds to come up in a new
+// cron container, so a single run retries connection failures briefly
+const CONNECT_RETRIES = 5
+const CONNECT_RETRY_MS = 3000
+
 // True when the tick route answered OK
 async function tick() {
   const time = new Date().toLocaleTimeString()
-  try {
-    const response = await fetch(tickUrl, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${secret}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    const body = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      console.error(`[${time}] tick failed (${response.status}): ${body.error ?? 'no detail'}`)
-      if (response.status === 401) console.error('  CRON_SECRET must match the one the app started with. Restart the app after changing it.')
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await fetch(tickUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        console.error(`[${time}] tick failed (${response.status}): ${body.error ?? 'no detail'}`)
+        if (response.status === 401) console.error('  CRON_SECRET must match the one the app started with. Restart the app after changing it.')
+        return false
+      }
+      console.log(`[${time}] ${describe(body)}`)
+      return true
+    } catch (error) {
+      const cause = error.cause?.code ?? error.cause?.message
+      if (once && attempt < CONNECT_RETRIES && error.name !== 'TimeoutError') {
+        await new Promise((resolve) => setTimeout(resolve, CONNECT_RETRY_MS))
+        continue
+      }
+      console.error(
+        `[${time}] could not reach ${tickUrl}: ${error.message}${cause ? ` (${cause})` : ''}. ` +
+          'ENOTFOUND or EAI_AGAIN: the host name is wrong or the private network is not ready. ' +
+          'ECONNREFUSED: the port is wrong. Check OUTREACH_APP_URL and that the app is running.'
+      )
       return false
     }
-    console.log(`[${time}] ${describe(body)}`)
-    return true
-  } catch (error) {
-    console.error(`[${time}] could not reach ${tickUrl}: ${error.message}. Is the app running at OUTREACH_APP_URL (default http://localhost:3000)?`)
-    return false
   }
 }
 
