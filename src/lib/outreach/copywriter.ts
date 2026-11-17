@@ -198,8 +198,9 @@ export function systemBlocks(rules: string[]): Anthropic.Beta.Messages.BetaTextB
 
 let client: Anthropic | null = null
 function anthropic() {
-  // Reads ANTHROPIC_API_KEY from the environment
-  client ??= new Anthropic()
+  // Reads ANTHROPIC_API_KEY from the environment. The SDK default (10 minutes,
+  // 2 retries) outlasts the browser, so a stuck call shows an error instead
+  client ??= new Anthropic({ timeout: 60_000, maxRetries: 1 })
   return client
 }
 

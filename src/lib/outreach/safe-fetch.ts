@@ -149,9 +149,24 @@ interface Hop {
 }
 
 function requestOnce(url: URL, deadline: number): Promise<Hop> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolveHop, rejectHop) => {
     const remaining = deadline - Date.now()
-    if (remaining <= 0) return reject(new SafeFetchError('timeout', 'Timed out'))
+    if (remaining <= 0) return rejectHop(new SafeFetchError('timeout', 'Timed out'))
+
+    // A site that drops the connection mid-page fires neither 'end' nor
+    // 'error', so a hard deadline is the only thing that ends the wait
+    const timer = setTimeout(() => {
+      req.destroy()
+      rejectHop(new SafeFetchError('timeout', 'Timed out'))
+    }, remaining)
+    const resolve = (hop: Hop) => {
+      clearTimeout(timer)
+      resolveHop(hop)
+    }
+    const reject = (error: unknown) => {
+      clearTimeout(timer)
+      rejectHop(error)
+    }
 
     const client = url.protocol === 'https:' ? https : http
     const req = client.request(
@@ -199,10 +214,15 @@ function requestOnce(url: URL, deadline: number): Promise<Hop> {
         stream.on('error', (error) => {
           if (!truncated) reject(new SafeFetchError('network', error.message))
         })
+        res.on('error', () => {})
+        res.on('close', () => {
+          if (!res.complete && !truncated) {
+            reject(new SafeFetchError('network', 'The site closed the connection before the page finished'))
+          }
+        })
       }
     )
 
-    req.setTimeout(remaining, () => req.destroy(new SafeFetchError('timeout', 'Timed out')))
     req.on('error', (error: NodeJS.ErrnoException) => {
       if (error instanceof SafeFetchError) return reject(error)
       if (error.code === 'EBLOCKED') return reject(new SafeFetchError('blocked', error.message))
