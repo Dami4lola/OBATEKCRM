@@ -5,7 +5,7 @@ import { getMailboxAccess, type MailboxAccess } from '@/lib/email/mailbox'
 import { fetchSettings } from '@/lib/outreach/adapters/obatek-crm'
 import type { OutreachSettings } from '@/lib/outreach/settings'
 import { errorMessage } from '@/lib/outreach/errors'
-import { auditSignalLeads, draftPending, queueSignalLeads, startDueRuns } from '@/lib/outreach/scheduler'
+import { auditSignalLeads, completeSentRuns, draftPending, queueSignalLeads, startDueRuns } from '@/lib/outreach/scheduler'
 import { sendDue } from '@/lib/outreach/send-queue'
 import { syncInbox } from '@/lib/outreach/inbox-sync'
 import { pullSignals } from '@/lib/outreach/signal-pull'
@@ -99,6 +99,14 @@ async function readAndSend(crm: Crm, settings: OutreachSettings, now: Date, summ
     })
   } catch (error) {
     summary.sendError = errorMessage(error)
+  }
+
+  // Runs whose queued emails have all gone out leave the Runs list
+  try {
+    const completed = await completeSentRuns(crm)
+    if (completed.length) summary.runsCompleted = completed
+  } catch (error) {
+    summary.runsCompletedError = errorMessage(error)
   }
 }
 

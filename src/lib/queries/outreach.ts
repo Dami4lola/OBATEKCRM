@@ -69,23 +69,51 @@ export function useOutreachGather(enabled: boolean) {
   })
 }
 
+// How far a run handed to the scheduler has got: emails sent out of the
+// ones queued for it (blocked-up-front leads don't count)
+export interface RunProgress {
+  sent: number
+  failed: number
+  total: number
+}
+
+export type ActiveRun = OutreachRun & { progress: RunProgress | null }
+
 export function useActiveOutreachRuns() {
   const supabase = createClient()
 
   return useQuery({
     queryKey: ['outreach', 'runs', 'active'],
-    // The scheduler starts and finishes runs without the page knowing
+    // The scheduler starts, sends and finishes runs without the page knowing
     staleTime: 0,
     refetchInterval: 30_000,
-    queryFn: async (): Promise<OutreachRun[]> => {
+    queryFn: async (): Promise<ActiveRun[]> => {
       const { data, error } = await supabase
         .from('outreach_runs')
         .select('*')
         .in('status', ACTIVE_RUN_STATUSES)
         .order('scheduled_for', { ascending: true })
-
       if (error) throw error
-      return data || []
+      const runs = data || []
+
+      const sendingIds = runs.filter((run) => run.status === 'sending').map((run) => run.id)
+      const progress = new Map<string, RunProgress>()
+      if (sendingIds.length) {
+        const { data: emails, error: emailsError } = await supabase
+          .from('outreach_emails')
+          .select('run_id, status')
+          .in('run_id', sendingIds)
+        if (emailsError) throw emailsError
+        for (const { run_id, status } of emails || []) {
+          if (!run_id || !['queued', 'sending', 'sent', 'failed'].includes(status)) continue
+          const p = progress.get(run_id) ?? { sent: 0, failed: 0, total: 0 }
+          p.total++
+          if (status === 'sent') p.sent++
+          if (status === 'failed') p.failed++
+          progress.set(run_id, p)
+        }
+      }
+      return runs.map((run) => ({ ...run, progress: progress.get(run.id) ?? null }))
     },
   })
 }

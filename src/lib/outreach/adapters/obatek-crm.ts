@@ -379,6 +379,23 @@ export async function finishRun(
   if (error) throw error
 }
 
+// Runs whose queued emails are still going out (the pop-up's Send step)
+export async function fetchSendingRuns(crm: Crm): Promise<OutreachRun[]> {
+  const { data, error } = await crm.from('outreach_runs').select('*').eq('status', 'sending')
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchRunEmailStatuses(
+  crm: Crm,
+  runIds: string[]
+): Promise<{ run_id: string | null; status: OutreachEmailStatus }[]> {
+  if (runIds.length === 0) return []
+  const { data, error } = await crm.from('outreach_emails').select('run_id, status').in('run_id', runIds)
+  if (error) throw error
+  return data || []
+}
+
 // Drafts still to write in runs the scheduler started
 export async function fetchUndraftedEmailIds(crm: Crm, limit: number): Promise<string[]> {
   const { data: runs, error } = await crm

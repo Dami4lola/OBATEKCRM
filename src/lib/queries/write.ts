@@ -139,24 +139,35 @@ export async function requestTestSend(emailId: string): Promise<{ sentTo: string
   return body as { sentTo: string }
 }
 
+// queued: handed to the scheduler, not yet sent
 export interface RunSummary {
-  sent: number
+  queued?: number
+  sent?: number
   failed: number
   blocked: number
 }
 
-// Marks the run finished once nothing is left to send
+// Once nothing is left to review: 'sending' while queued emails wait for the
+// scheduler (it completes the run once they've gone), 'completed' otherwise
 export function useCompleteRun() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ runId, summary }: { runId: string; summary: RunSummary }) => {
+    mutationFn: async ({
+      runId,
+      status,
+      summary,
+    }: {
+      runId: string
+      status: 'sending' | 'completed'
+      summary: RunSummary
+    }) => {
       const { error } = await supabase
         .from('outreach_runs')
         .update({
-          status: 'completed',
-          finished_at: new Date().toISOString(),
+          status,
+          finished_at: status === 'completed' ? new Date().toISOString() : null,
           summary: summary as unknown as Json,
         })
         .eq('id', runId)

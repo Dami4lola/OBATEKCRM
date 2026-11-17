@@ -7,6 +7,8 @@ import {
   fetchLeadsByIds,
   fetchRecentFitSignals,
   fetchSettings,
+  fetchRunEmailStatuses,
+  fetchSendingRuns,
   fetchUndraftedEmailIds,
   finishRun,
   getOrCreateSignalRun,
@@ -68,6 +70,33 @@ export async function startDueRuns(crm: Crm, now = new Date()): Promise<StartedR
     }
   }
   return started
+}
+
+// Emails a run still has to review or send. Follow-ups don't keep it open.
+const UNFINISHED_EMAIL_STATUSES = new Set(['draft', 'approved', 'queued', 'sending'])
+
+// Runs handed over by the pop-up's Send step stay 'sending' until every
+// queued email has gone (or failed, or been blocked), then complete here
+// with the real counts. Returns the ids completed.
+export async function completeSentRuns(crm: Crm): Promise<string[]> {
+  const runs = await fetchSendingRuns(crm)
+  const emails = await fetchRunEmailStatuses(crm, runs.map((run) => run.id))
+  const completed: string[] = []
+
+  for (const run of runs) {
+    const statuses = emails.filter((e) => e.run_id === run.id).map((e) => e.status)
+    if (statuses.some((status) => UNFINISHED_EMAIL_STATUSES.has(status))) continue
+    const summary = run.summary && typeof run.summary === 'object' && !Array.isArray(run.summary) ? run.summary : {}
+    await finishRun(crm, run.id, 'completed', {
+      ...summary,
+      queued: 0,
+      sent: statuses.filter((s) => s === 'sent').length,
+      failed: statuses.filter((s) => s === 'failed').length,
+      blocked: statuses.filter((s) => s === 'blocked').length,
+    })
+    completed.push(run.id)
+  }
+  return completed
 }
 
 export interface DraftPendingResult {

@@ -26,8 +26,8 @@ const STATUS_LABELS: Record<OutreachRunStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-// Runs that have drafts to write or review
-const REVIEWABLE: OutreachRunStatus[] = ['preparing', 'awaiting_review']
+// Runs that can be opened: drafts to write or review, or queued emails going out
+const REVIEWABLE: OutreachRunStatus[] = ['preparing', 'awaiting_review', 'sending']
 
 export function ActiveRuns({ onReview }: { onReview?: (runId: string) => void }) {
   const { data: runs = [] } = useActiveOutreachRuns()
@@ -57,6 +57,12 @@ export function ActiveRuns({ onReview }: { onReview?: (runId: string) => void })
               {isSignalRun(run) && <span className="font-medium">Buying signals</span>}
               <span className="whitespace-nowrap">{format(new Date(run.scheduled_for), 'MMM d, h:mm a')}</span>
               <span className="text-xs text-muted-foreground">{run.mode}</span>
+              {run.progress && (
+                <span className="text-xs text-muted-foreground">
+                  {run.progress.sent} of {run.progress.total} sent
+                  {run.progress.failed > 0 && `, ${run.progress.failed} failed`}
+                </span>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
             {onReview && REVIEWABLE.includes(run.status) && (

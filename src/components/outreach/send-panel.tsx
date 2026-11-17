@@ -61,15 +61,22 @@ export function SendPanel({ runId, items, settings }: SendPanelProps) {
     const latest = queryClient.getQueryData<RunEmail[]>(['outreach', 'run-emails', runId]) ?? []
     const open = latest.some((i) => i.email.status === 'draft' || i.email.status === 'approved')
     if (!open) {
-      await completeRun.mutateAsync({
-        runId,
-        summary: {
-          sent: latest.filter((i) => i.email.status === 'queued' || i.email.status === 'sent').length,
-          failed: latest.filter((i) => i.email.status === 'failed').length,
-          blocked: latest.filter((i) => i.email.status === 'blocked').length,
-        },
-      })
-      toast.success('Run complete. Queued emails go out on the scheduler.')
+      const waiting = latest.filter((i) => i.email.status === 'queued').length
+      const counts = {
+        sent: latest.filter((i) => i.email.status === 'sent').length,
+        failed: latest.filter((i) => i.email.status === 'failed').length,
+        blocked: latest.filter((i) => i.email.status === 'blocked').length,
+      }
+      if (waiting > 0) {
+        // Stays on the Runs list until the scheduler has sent them
+        await completeRun.mutateAsync({ runId, status: 'sending', summary: { queued: waiting, ...counts } })
+        toast.success(
+          `${waiting} email${waiting === 1 ? '' : 's'} queued. The run shows as Sending until the scheduler has sent them.`
+        )
+      } else {
+        await completeRun.mutateAsync({ runId, status: 'completed', summary: counts })
+        toast.success('Run complete.')
+      }
     }
   }
 
